@@ -24,7 +24,7 @@ entry:
     - "close > SMA(close, 200)"
     - "PCTRANK(deviation, 250) <= 5"                     # その銘柄の過去250日で下位5%タイル
     - "deviation <= -8.0"                                # 下限の歯止め（分布が狭い銘柄を除外）
-  rank: "PCTRANK(deviation, 250) の低い順"
+  rank: {by: "PCTRANK(deviation, 250)", order: asc}               # 乖離が極端な順
 
 exit:
   stop:

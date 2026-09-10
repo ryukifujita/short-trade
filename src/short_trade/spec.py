@@ -29,10 +29,8 @@ class StrategySpec:
     @property
     def regime_conditions(self) -> list[str]:
         own = list(self.raw.get("regime_filter", []) or [])
-        common = list(
-            self.common.get("regime", {}).get("market_filter", {}).get("condition", "")
-            and [self.common["regime"]["market_filter"]["condition"]] or []
-        )
+        cond = self.common.get("regime", {}).get("market_filter", {}).get("condition")
+        common = [cond] if cond else []
         # 個別仕様が同じ条件を明示していても重複評価しないよう集約する
         return list(dict.fromkeys(own + common))
 
@@ -76,6 +74,22 @@ class StrategySpec:
         return [k for k, v in raw.items() if isinstance(v, dict)]
 
     @property
+    def rank(self) -> tuple[str, bool] | None:
+        """候補の優先順位: (式, 降順か)。説明文のままなら仕様不備として落とす。"""
+        r = self.raw.get("entry", {}).get("rank")
+        if r is None:
+            return None
+        if not isinstance(r, dict) or "by" not in r:
+            raise SpecError(f"{self.id}: entry.rank は {{by: 式, order: desc|asc}} の形で書いてください: {r!r}")
+        return str(r["by"]), str(r.get("order", "desc")).lower() != "asc"
+
+    @property
+    def max_positions(self) -> int | None:
+        """戦略固有の同時保有上限（ST-09 の `definitions.max_positions` など）。"""
+        v = (self.raw.get("definitions") or {}).get("max_positions")
+        return int(v) if v is not None else None
+
+    @property
     def params(self) -> dict[str, Any]:
         return {p["name"]: p["default"] for p in self.raw.get("params_to_optimize", [])}
 
@@ -107,10 +121,12 @@ def load_spec(path: Path, common: dict[str, Any]) -> StrategySpec:
     if raw["id"] != path.stem:
         raise SpecError(f"{path.name}: id({raw['id']}) がファイル名と一致しません")
 
-    return StrategySpec(
+    spec = StrategySpec(
         id=raw["id"], name=raw["name"], factor=raw["factor"],
         phase=raw.get("phase"), common=common, raw=raw,
     )
+    _ = spec.rank          # 説明文のままの rank は起動時に弾く（実行中に辞書順採用へ落ちないように）
+    return spec
 
 
 def load_all(catalog_dir: Path, *, phase: int | None = None) -> list[StrategySpec]:

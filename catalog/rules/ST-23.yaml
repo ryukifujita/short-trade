@@ -28,7 +28,7 @@ entry:
     - "volume[event_day] >= SMA(volume, 20)[event_day - 1] * 2.0"
     - "eps_growth_yoy >= 20.0"
     - "close[event_day] >= open[event_day]"        # ギャップを埋めずに引けたこと
-  rank: "gap_pct の大きい順"
+  rank: {by: "gap_pct", order: desc}
 
 exit:
   stop:

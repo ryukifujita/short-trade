@@ -20,7 +20,7 @@ entry:
   conditions:
     - "close > HIGHEST(high, 20)[-1]"            # 当日終値が「前日までの20日高値」を上抜け
     - "volume > SMA(volume, 20) * 1.0"           # 出来高が枯れていないことの最低確認
-  rank: "20日高値からの上抜け率が大きい順"        # 候補が同時多発したときの優先順位
+  rank: {by: "close / HIGHEST(high, 20)[-1] - 1", order: desc}   # 20日高値からの上抜け率が大きい順
 
 exit:
   stop:

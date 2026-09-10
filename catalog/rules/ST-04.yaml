@@ -33,7 +33,7 @@ entry:
     # --- ブレイク ---
     - "close > vcp.pivot"
     - "volume >= SMA(volume, 20) * 1.5"
-  rank: "PCTRANK(return_126d) の高い順"
+  rank: {by: "return_126d", order: desc}                          # 相対強度の高い順
 
 definitions:
   return_126d: "close / close[-126] - 1"      # 相対強度の元になる126営業日リターン

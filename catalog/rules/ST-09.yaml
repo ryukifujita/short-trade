@@ -21,7 +21,7 @@ entry:
   conditions:
     - "PCTRANK(momentum_score, universe) >= 90"          # 上位10%
     - "close > SMA(close, 200)"                           # 個別銘柄も上昇トレンドであること
-  rank: "momentum_score の高い順。上位から最大 max_positions まで採用"
+  rank: {by: "momentum_score", order: desc}                       # 上位から最大 max_positions まで採用
 
 definitions:
   momentum_score: "close[-21] / close[-147] - 1"          # 直近21営業日をスキップした126営業日リターン

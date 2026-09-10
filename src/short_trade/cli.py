@@ -58,6 +58,8 @@ def cmd_smoke(args) -> int:
         except UnsupportedSpec as e:
             print(f"  未実装: {e}")
             continue
+        for w in res.warnings[:3]:
+            print("  警告:", w)
         m = res.metrics()
         if m["取引数"] == 0:
             print("  シグナルなし。却下理由:", res.rejections or "（条件不成立）")
@@ -73,6 +75,20 @@ def cmd_fetch(args) -> int:
     from .jquants import JQuantsClient, to_bars
 
     client = JQuantsClient()
+    if args.index:
+        out = ROOT / "data" / "jquants" / "index.parquet"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if args.index.lower() == "topix":
+            raw = client.topix(start=args.start, end=args.end)
+            if raw.empty:
+                raise SystemExit("TOPIX が取得できませんでした（無料プランでは不可の可能性。--index 1306 を試してください）")
+            df = raw.rename(columns={"Close": "close"})[["close"]].astype(float)
+            df.index = pd.to_datetime(raw["Date"])
+        else:
+            df = to_bars(client.daily_quotes(code=args.index, start=args.start, end=args.end))[["close"]]
+        df.sort_index().to_parquet(out)
+        print(f"指数（{args.index}）{len(df)} 本を {out} に保存しました")
+        return 0
     codes = [c.strip() for c in args.codes.split(",")] if args.codes else []
     if not codes:
         info = client.listed_info()
@@ -115,14 +131,18 @@ def cmd_backtest(args) -> int:
         print("警告: 指数データがありません。レジームフィルタが評価できません（docs/19 §19.4 の代用案を参照）")
 
     for spec in _specs(args.strategy):
+        overrides = {"initial_equity": args.equity}
+        if args.slippage is not None:
+            overrides["slippage_pct"] = args.slippage
         res = run(spec, data, index=index,
-                  config=BacktestConfig.from_common(spec.common,
-                                                    initial_equity=args.equity))
+                  config=BacktestConfig.from_common(spec.common, **overrides))
         print(f"\n=== {spec.id} {spec.name} ===")
         for k, v in res.metrics().items():
             print(f"  {k:20} {v:>12.2f}" if isinstance(v, float) else f"  {k:20} {v:>12}")
         if res.rejections:
             print("  却下:", res.rejections)
+        for w in res.warnings[:5]:
+            print("  警告:", w)
     return 0
 
 
@@ -138,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
 
     f = sub.add_parser("fetch", help="J-Quants からデータを取得")
     f.add_argument("--codes", help="カンマ区切りの銘柄コード。省略すると上場銘柄一覧を取得")
+    f.add_argument("--index", help="指数を取得して index.parquet に保存。'topix' または代用ETFのコード（例: 1306）")
     f.add_argument("--start", default="2015-01-01")
     f.add_argument("--end", default=None)
     f.add_argument("--refresh", action="store_true")
@@ -148,6 +169,8 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--start", default=None)
     b.add_argument("--end", default=None)
     b.add_argument("--equity", type=float, default=50_000)
+    b.add_argument("--slippage", type=float, default=None,
+                   help="片道スリッページ%%。VR-016: 0（楽観）と 0.1（保守）の両方で実行して比較する")
     b.set_defaults(func=cmd_backtest)
 
     args = p.parse_args(argv)

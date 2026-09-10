@@ -87,7 +87,11 @@ class JQuantsClient:
             params={"refreshtoken": self._refresh_token()},
             timeout=self.timeout,
         )
-        self._raise_for_status(r, "auth_refresh")
+        if r.status_code >= 400:
+            raise JQuantsError(
+                f"auth_refresh が失敗しました: HTTP {r.status_code}。"
+                "リフレッシュトークンの有効期限は1週間です。期限切れなら JQUANTS_REFRESH_TOKEN を取り直してください"
+            )
         self._id_token = r.json()["idToken"]
         return self._id_token
 

@@ -43,12 +43,16 @@ def flat_then_breakout_then_crash(n_flat=60, flat=100.0, n_up=15, step=2.0,
     wobble = [flat + (0.5 if i % 2 else -0.5) for i in range(n_flat)]
     up = [flat + step * (i + 1) for i in range(n_up)]
     peak = up[-1]
-    down = [peak - drop * (i + 1) for i in range(n_down)]
+    # 一定額ずつ引くと価格が 0 以下になりうる（FR-108 の検証に引っかかる）。比率で下げる
+    rate = drop / peak
+    down = [peak * (1 - rate) ** (i + 1) for i in range(n_down)]
     return make_bars(wobble + up + down)
 
 
 def rising_index(n: int, start="2024-01-01") -> pd.DataFrame:
     """常に200日線の上にある市場指数。レジームフィルタを通すために使う。"""
-    closes = np.linspace(1000.0, 1000.0 + n * 0.5, n + 300)
-    dates = pd.bdate_range(pd.Timestamp(start) - pd.Timedelta(days=460), periods=len(closes))
+    lead = 330                                                   # SMA200 が埋まるだけの助走
+    closes = np.linspace(1000.0, 1000.0 + n * 0.5, n + lead)
+    end = pd.bdate_range(start, periods=n)[-1]
+    dates = pd.bdate_range(end=end, periods=len(closes))          # 銘柄の最終日まで確実に覆う
     return pd.DataFrame({"close": closes}, index=dates)

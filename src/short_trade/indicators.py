@@ -161,7 +161,20 @@ class _Frame:
             raise AttributeError(f"列 {name} がありません") from e
 
 
-_SAFE_BUILTINS = {"abs": abs, "min": min, "max": max, "True": True, "False": False}
+def _elementwise(fn):
+    """`max(a, b)` を要素ごとに評価する。Python 組み込みの max は Series を比較できない。"""
+    def apply(*args):
+        out = args[0]
+        for a in args[1:]:
+            out = fn(out, a)
+        return out
+    return apply
+
+
+_SAFE_BUILTINS = {
+    "abs": abs, "True": True, "False": False,
+    "min": _elementwise(np.minimum), "max": _elementwise(np.maximum),
+}
 
 
 def build_namespace(df: pd.DataFrame, *, index: pd.DataFrame | None = None,

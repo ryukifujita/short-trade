@@ -21,7 +21,7 @@ entry:
     - "close > SMA(close, 200)"          # 大きな流れは上（原法の中核条件）
     - "RSI(2) < 10"                      # 短期的な売られすぎ
     - "close < SMA(close, 5)"            # 短期平均を下回っている
-  rank: "RSI(2) の低い順"
+  rank: {by: "RSI(2)", order: asc}                                # 売られすぎが強い順
 
 exit:
   stop:

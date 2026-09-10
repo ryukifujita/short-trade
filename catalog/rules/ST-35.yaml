@@ -23,7 +23,7 @@ entry:
     - "close > base_high"                   # 底固めレンジの上抜け
     - "volume >= SMA(volume, 20) * 2.0"     # 出来高を伴う
     - "stage_1_days >= 30"                  # 直前に30営業日以上の底固めがあったこと
-  rank: "レンジ上抜け率の大きい順"
+  rank: {by: "close / base_high - 1", order: desc}                # レンジ上抜け率の大きい順
 
 exit:
   stop:

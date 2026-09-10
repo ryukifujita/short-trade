@@ -18,6 +18,8 @@ execution:
   slot: "09:00"               # 前場始値。締切は前営業日13:30頃〜当日7:00（CR-070で要確認）
   limit_order_available: false
   stop_order_available: false
+  slippage_pct: 0.10          # VR-011 片道。S株は始値で一括執行されるため実際は小さいが、保守的に置く
+  commission_pct: 0.0         # ゼロ革命（CR-041）。料率変更時はここを更新する（CR-042）
 
 # ---------- ユニバース ----------
 universe:
@@ -48,6 +50,10 @@ risk:
   max_position_pct: 15              # RM-001c 1銘柄あたりの投下額上限
   max_portfolio_heat_pct: 6.0       # RM-010
   max_concurrent_positions: 8       # RM-013
+  daily_loss_limit_pct: 2.0         # RM-020 当日の純損失がこの比率に達したら当日の新規建てを停止
+  drawdown_derisk:                  # RM-022 ドローダウンに応じてサイズを段階的に縮小
+    - {dd_pct: 5.0,  size_mult: 0.5}
+    - {dd_pct: 10.0, size_mult: 0.25}
   no_earnings_hold: true            # RM-001d 決算をまたいで保有しない
   earnings_blackout_days: 1         # 決算発表日の前後1営業日はエントリー禁止
   same_day_round_trip: 1            # RM-006 現物の差金決済規制（同一銘柄1日1回転）

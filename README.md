@@ -9,7 +9,7 @@
 pip install -r requirements.txt
 PYTHONPATH=src python -m short_trade selfcheck   # 仕様ファイルの検査
 PYTHONPATH=src python -m short_trade smoke       # 合成データで基盤の確認
-python -m pytest tests/ -q                       # テスト 31件
+python -m pytest tests/ -q                       # テスト 47件
 ```
 
 実装の現況は [docs/20](docs/20_実装状況.md) を参照してください。実装は要求定義の合意後、`docs/10_ロードマップと段階スコープ.md` の
@@ -38,6 +38,7 @@ python -m pytest tests/ -q                       # テスト 31件
 | 16 | [網羅性と統合合理性の現状評価](docs/16_網羅性と統合合理性の現状評価.md) | 何がどこまでできていて、何ができていないか |
 | 17 | [因子分類と代表手法の選抜](docs/17_因子分類と代表手法の選抜.md) | 63件への因子タグ付与と、合議に組み込む8本の選抜 |
 | 18 | [戦略仕様 — 代表8本の条件式](docs/18_戦略仕様_代表8本.md) | 書き下した条件式、原法からの改変、相関の事前予想 |
+| 21 | [敵対的レビュー記録](docs/21_敵対的レビュー記録.md) | 4パスで19件を修正。直さなかった違和感と残課題 |
 | 20 | [実装状況](docs/20_実装状況.md) | 検証基盤の実装、動く戦略／動かない戦略、使い方 |
 | 19 | [データ源の調査結果](docs/19_データ源の調査結果.md) | Q-12 への回答。J-Quants 無料プランで Phase 1〜3 は0円 |
 | — | [手法カタログ 正本（YAML）](catalog/strategies.yaml) | 全63件の構造化データ。docs/03・17 の表はここから生成 |

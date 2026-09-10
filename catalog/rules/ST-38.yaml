@@ -24,11 +24,11 @@ entry:
     - "close > SMA(close, 50)"                        # 方向の仮定を支える条件
     - "SMA(close, 50) > SMA(close, 150)"
     - "close >= (high + low) / 2"                     # 当日足の上半分で引けている
-  rank: "レンジ幅 / ATR(20) の小さい順（収縮が強い順）"
+  rank: {by: "(high - low) / ATR(20)", order: asc}                # 収縮が強い順
 
 exit:
   stop:
-    initial: "close_at_entry - (high[-1] - low[-1]) * 1.0"   # 前日レンジ1本分
+    initial: "close_at_entry - (high - low) * 1.0"   # NR7当日のレンジ1本分（式は判定日＝NR7当日で評価される）
     trailing: null
     ratchet: false
   rules:
