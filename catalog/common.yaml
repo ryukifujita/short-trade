@@ -1,0 +1,63 @@
+# 全戦略に共通する前提。個別仕様（catalog/rules/*.yaml）はこれを継承する。
+# 個別仕様で同じキーを定義した場合は個別仕様が優先する。
+version: 1
+updated: 2026-09-10
+
+# ---------- 判定と執行 ----------
+decision:
+  # すべての戦略は「当日終値の確定後に判定し、翌営業日の9:00執行枠で発注する」に統一する。
+  # 統一する理由: 未来情報の混入（ルックアヘッド）が構造的に起きなくなるため。VR-002。
+  evaluated_on: "当日終値（確定足のみ）"
+  uses_intraday: false
+  signal_valid_until: "翌営業日 06:30（最終リマインド時刻）"
+
+execution:
+  broker: "SBI証券"
+  instrument: "S株（単元未満株）"
+  order_type: "成行"          # S株は指値・逆指値が使えない
+  slot: "09:00"               # 前場始値。締切は前営業日13:30頃〜当日7:00（CR-070で要確認）
+  limit_order_available: false
+  stop_order_available: false
+
+# ---------- ユニバース ----------
+universe:
+  markets: [プライム, スタンダード, グロース]
+  min_avg_turnover_20d: 50000000     # 円。資金5万円では非拘束だが将来のために設定
+  min_listed_days: 60
+  exclude_flags: [監理銘柄, 整理銘柄, 売買停止, 増担保規制]
+  exclude_list_file: "config/blacklist.yaml"   # 手動の売買禁止リスト（FR-125）
+  rebuild: "日次"
+
+# ---------- 相場レジーム（全戦略の稼働条件） ----------
+regime:
+  # DEC-060: 下降レジームでは買いシグナルを出さない＝現金比率100%。空売りができないため
+  # これが唯一の防御手段になる。
+  market_filter:
+    index: TOPIX
+    condition: "close > SMA(close, 200)"
+  hysteresis_days: 3        # 3営業日連続で条件を満たして初めて切り替える（DEC-012）
+
+# ---------- リスク ----------
+risk:
+  # S株は逆指値が置けないため、損切りは「論理ストップ＋次の執行枠で成行」（RM-001a）
+  stop_mechanism: "論理ストップ"
+  stop_execution: "条件成立を検知した次の執行枠で成行売り"
+  assumed_loss_multiple: 2.0        # RM-001b ギャップ込みで損切り幅の2倍を想定損失とする
+  risk_pct_default: 1.0             # RM-002 口座資産に対する1トレードの想定損失
+  max_position_pct: 15              # RM-001c 1銘柄あたりの投下額上限
+  max_portfolio_heat_pct: 6.0       # RM-010
+  max_concurrent_positions: 8       # RM-013
+  no_earnings_hold: true            # RM-001d 決算をまたいで保有しない
+  earnings_blackout_days: 1         # 決算発表日の前後1営業日はエントリー禁止
+  same_day_round_trip: 1            # RM-006 現物の差金決済規制（同一銘柄1日1回転）
+
+sizing:
+  default_method: MM-01             # 固定比率リスク
+  rounding: "1株単位（S株）"
+
+# ---------- データ ----------
+data:
+  required: [日足OHLCV, 銘柄マスタ, TOPIX日足]
+  optional: [決算発表日, 対前年同期EPS]        # ST-23 のみ必要
+  adjustments: "分割・併合を反映した調整済み株価を使用（FR-105）"
+  point_in_time: true                          # DR-022 後日訂正値の混入禁止

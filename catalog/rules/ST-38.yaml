@@ -1,0 +1,60 @@
+id: "ST-38"
+name: "NR7（レンジ収縮の翌日）"
+source: "Toby Crabel（書籍）"
+factor: "F2"
+phase: 3
+extends: "../common.yaml"
+
+hypothesis: >
+  当日のレンジが直近7日で最小になった翌日は、レンジが拡大しやすい。
+
+status_warning: >
+  **本戦略は原法の中核を実装できていない。** 原法は「始値の上下に逆指値を置き、
+  触れた方向に乗る」ことで方向を市場に決めさせる。S株は逆指値が置けないため方向を
+  確認できず、「上昇トレンド中なので上だろう」と仮定して買うしかない。
+  この仮定が外れれば、収縮したレンジの下方向への拡大をそのまま受ける。
+  相関測定の結果 ST-04 と重複する場合、**最初に削除する候補**とする。
+
+regime_filter:
+  - "INDEX.close > SMA(INDEX.close, 200)"
+
+entry:
+  conditions:
+    - "(high - low) == LOWEST(high - low, 7)"        # NR7
+    - "close > SMA(close, 50)"                        # 方向の仮定を支える条件
+    - "SMA(close, 50) > SMA(close, 150)"
+    - "close >= (high + low) / 2"                     # 当日足の上半分で引けている
+  rank: "レンジ幅 / ATR(20) の小さい順（収縮が強い順）"
+
+exit:
+  stop:
+    initial: "close_at_entry - (high[-1] - low[-1]) * 1.0"   # 前日レンジ1本分
+    trailing: null
+    ratchet: false
+  rules:
+    - name: "目標到達"
+      condition: "unrealized_r >= 2.0"
+    - name: "時間手仕舞い"
+      condition: "holding_days >= 5"
+
+sizing: {method: "MM-01", risk_pct: 0.75}     # 方向を確認できないぶんサイズを落とす
+
+params_to_optimize:
+  - {name: nr_period, default: 7, range: [4, 10], step: 1}
+  - {name: hold_days, default: 5, range: [3, 10], step: 1}
+# 自由度 2。
+
+deviations:
+  - what: "**方向の確認を諦め、買い方向に固定した**"
+    why: "S株は逆指値が置けず、原法のブレイクアウト注文を再現できない"
+    impact: "原法の核が失われている。優位性が大きく落ちる可能性がある。削除候補の第一位"
+  - what: "オープニングレンジブレイク（ORB）部分を実装しない"
+    why: "ザラ場執行が必要"
+    impact: "日足のNR7判定のみを使う"
+
+expected_correlation:
+  ST-04: {predicted: 0.50, note: "同じF2（収縮→拡大）。測り方が押し幅とレンジ幅で異なる"}
+  ST-06: {predicted: 0.40}
+  ST-12: {predicted: 0.15}
+
+data_required: ["日足OHLCV", "TOPIX日足"]

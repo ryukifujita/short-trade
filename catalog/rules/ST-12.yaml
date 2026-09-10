@@ -1,0 +1,73 @@
+id: "ST-12"
+name: "短期RSI逆張り（Connors RSI2）"
+source: "Larry Connors（書籍）"
+factor: "F4"
+phase: 2
+extends: "../common.yaml"
+
+hypothesis: >
+  上昇トレンドの銘柄が短期的に売られすぎたとき、その下げは需給の一時的な偏りであり、
+  数日で戻りやすい。
+
+role_in_project: >
+  F1（ブレイクを買う）と符号が逆であり、分散の主軸になる。
+  この戦略と ST-06 の相関が低いことが、因子分類が正しかったことの最も強い証拠になる。
+
+regime_filter:
+  - "INDEX.close > SMA(INDEX.close, 200)"
+
+entry:
+  conditions:
+    - "close > SMA(close, 200)"          # 大きな流れは上（原法の中核条件）
+    - "RSI(2) < 10"                      # 短期的な売られすぎ
+    - "close < SMA(close, 5)"            # 短期平均を下回っている
+  rank: "RSI(2) の低い順"
+
+exit:
+  stop:
+    initial: "close_at_entry - ATR(20) * 2.5"
+    trailing: null
+    ratchet: false
+  rules:
+    - name: "短期平均への回復"
+      condition: "close > SMA(close, 5)"
+    - name: "時間手仕舞い"
+      condition: "holding_days >= 10"
+
+sizing:
+  method: "MM-01"
+  risk_pct: 1.0
+
+params_to_optimize:
+  - {name: rsi_period,     default: 2,   range: [2, 4],     step: 1}
+  - {name: rsi_threshold,  default: 10,  range: [5, 20],    step: 5}
+  - {name: atr_stop_mult,  default: 2.5, range: [2.0, 4.0], step: 0.5}
+# 自由度 3。
+
+deviations:
+  - what: "**原法にない損切りを追加した**"
+    why: >
+      Connors の原法は損切りを置かない。平均回帰戦略では、損切りが「一番戻りやすい局面」で
+      降りることになり、成績を悪化させることが多いと同氏自身が述べている。
+      しかし RM-001（損切り価格のないポジションを持たない）は本プロジェクトの最優先要求であり、
+      例外を認めない。
+    impact: >
+      **原法より期待値が下がる可能性が高い。** これは意図的な引き下げである。
+      検証時は「損切りあり」と「損切りなし（参考値）」の両方を計測し、
+      損切りが奪った収益の大きさを数字で把握する。それでも採用するのは、
+      逆指値が置けないS株では、損切りを置かない平均回帰は
+      1銘柄で資金の大半を失いうるためである。
+  - what: "エントリーは終値判定 → 翌営業日9:00成行"
+    why: "S株はザラ場で執行できない"
+    impact: "**この戦略に最も不利な改変**。売られすぎの底で買えず、翌朝の反発後に買うことになる。エッジの相当部分が失われる可能性がある"
+  - what: "ロングのみ"
+    why: "現物のみのスコープ"
+    impact: "買われすぎからの下落を取れない"
+
+expected_correlation:
+  ST-06: {predicted: 0.00, note: "符号が逆。0付近か負を期待する。ここが分散の主軸"}
+  ST-04: {predicted: 0.05, note: "同上"}
+  ST-09: {predicted: -0.10, note: "同上"}
+  ST-16: {predicted: 0.70, note: "**要注意**。同じF4。どちらも「下げたところを買う」。0.7を超えたら片方を落とす"}
+
+data_required: ["日足OHLCV", "TOPIX日足"]

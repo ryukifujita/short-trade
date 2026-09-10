@@ -1,0 +1,73 @@
+id: "ST-23"
+name: "決算後ドリフト（PEAD）"
+source: "学術（Ball & Brown 1968 以降の一連の研究）"
+factor: "F5"
+phase: 3
+extends: "../common.yaml"
+
+hypothesis: >
+  好決算が発表されても、価格はその日のうちに完全には織り込まれず、
+  数週間かけて同じ方向に動き続けやすい。
+
+blocking_dependency: >
+  **決算発表日と業績データの無料入手（Q-12）が着手条件。**
+  これが解決するまで本戦略は着手しない。他の7本は日足OHLCVのみで完結する。
+
+regime_filter:
+  - "INDEX.close > SMA(INDEX.close, 200)"
+
+definitions:
+  event_day: "決算発表の翌営業日（発表が引け後の場合。寄り前発表なら当日）"
+  gap_pct: "(open[event_day] / close[event_day - 1] - 1) * 100"
+  eps_growth_yoy: "(EPS当四半期 / EPS前年同四半期 - 1) * 100"
+
+entry:
+  timing: "event_day の終値で判定 → その翌営業日 09:00 執行枠"
+  conditions:
+    - "gap_pct >= 3.0"
+    - "volume[event_day] >= SMA(volume, 20)[event_day - 1] * 2.0"
+    - "eps_growth_yoy >= 20.0"
+    - "close[event_day] >= open[event_day]"        # ギャップを埋めずに引けたこと
+  rank: "gap_pct の大きい順"
+
+exit:
+  stop:
+    initial: "LOW(event_day) * 0.99"               # 決算翌日の安値の1%下
+    trailing: "LOWEST(low, 20)"
+    trailing_activates_at: "+2R"
+    ratchet: true
+  rules:
+    - name: "時間手仕舞い"
+      condition: "holding_days >= 40"              # ドリフトの想定期間
+    - name: "次回決算の接近"
+      condition: "days_to_next_earnings <= 2"      # RM-001d（決算跨ぎ禁止）
+
+sizing: {method: "MM-01", risk_pct: 1.0}
+
+params_to_optimize:
+  - {name: gap_threshold, default: 3.0,  range: [2.0, 6.0],  step: 0.5}
+  - {name: volume_mult,   default: 2.0,  range: [1.5, 3.0],  step: 0.25}
+  - {name: hold_days,     default: 40,   range: [20, 60],    step: 10}
+# 自由度 3。
+
+deviations:
+  - what: "**アナリスト予想（コンセンサス）を使わず、対前年同期比で代替する**"
+    why: "コンセンサスデータは無料で入手できない（NFR-061 月額固定費0円）"
+    impact: >
+      学術研究の SUE（標準化された予想外収益）は「予想との差」で定義される。
+      対前年同期比は市場の期待を反映しないため、**サプライズの測り方として明確に劣る**。
+      PEAD の効果を正しく捉えられない可能性がある。
+  - what: "決算翌日ではなく翌々営業日に買う"
+    why: "決算翌日は値動きが荒く、S株の成行では約定価格が読めない。損切り幅も見積もれない"
+    impact: "初動の値上がりを取り逃す。ドリフトの残りだけを取る形になる"
+  - what: "好決算のみ（ロングのみ）"
+    why: "現物のみのスコープ"
+    impact: "悪決算後の下方ドリフトを取れない"
+
+expected_correlation:
+  ST-04: {predicted: 0.25, note: "決算ギャップ後にVCPを形成する銘柄で一部重なる"}
+  ST-06: {predicted: 0.20}
+  ST-09: {predicted: 0.30, note: "好決算銘柄は相対強度も上がる"}
+  ST-12: {predicted: 0.00}
+
+data_required: ["日足OHLCV", "TOPIX日足", "決算発表日", "四半期EPS（対前年同期）"]

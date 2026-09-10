@@ -1,0 +1,63 @@
+id: "ST-35"
+name: "ステージ分析（ステージ2への転換を買う）"
+source: "Stan Weinstein（書籍）"
+factor: "F1"
+phase: 3
+extends: "../common.yaml"
+
+hypothesis: >
+  相場は「底固め→上昇→天井圏→下降」の4段階を巡る。底固め（ステージ1）を終えて
+  上昇（ステージ2）へ移る瞬間に、新規の買いが継続的に入りやすい。
+
+regime_filter:
+  - "INDEX.close > SMA(INDEX.close, 200)"
+
+definitions:
+  ma30w: "SMA(close, 150)"                  # 30週線の日足換算
+  base_high: "HIGHEST(high, 150)[-1]"       # 直近30週のレンジ上限（前日まで）
+
+entry:
+  conditions:
+    - "close > ma30w"
+    - "ma30w > ma30w[-10]"                  # 30週線が上向き
+    - "close > base_high"                   # 底固めレンジの上抜け
+    - "volume >= SMA(volume, 20) * 2.0"     # 出来高を伴う
+    - "stage_1_days >= 30"                  # 直前に30営業日以上の底固めがあったこと
+  rank: "レンジ上抜け率の大きい順"
+
+exit:
+  stop:
+    initial: "min(ma30w * 0.95, LOWEST(low, 20))"
+    trailing: "ma30w * 0.95"
+    ratchet: true
+  rules:
+    - name: "30週線割れ（2日連続）"
+      condition: "close < ma30w and close[-1] < ma30w[-1]"
+    - name: "時間手仕舞い"
+      condition: "holding_days >= 60 and unrealized_r < 1.0"
+
+sizing: {method: "MM-01", risk_pct: 1.0}
+
+params_to_optimize:
+  - {name: ma_period,    default: 150, range: [100, 200], step: 25}
+  - {name: volume_mult,  default: 2.0, range: [1.5, 3.0], step: 0.25}
+# 自由度 2。
+
+deviations:
+  - what: "週足ではなく日足で30週線（SMA150）を計算する"
+    why: "週足データを別に持つと実装が二重になる。日足からの換算で近似する"
+    impact: "週足の終値ベースとは僅かにずれる"
+  - what: "ステージ3（天井圏）・ステージ4（下降）での売り・空売りを行わない"
+    why: "現物のみのスコープ"
+    impact: "原法の半分（下降局面での回避と空売り）が使えない"
+  - what: "ステージ判定を「30週線との位置＋傾き＋レンジ上抜け」に単純化した"
+    why: "原法は相対強度線を含む目視判断を含み、そのままでは検証できない"
+    impact: "原著者の判定と一致しないケースが出る"
+
+expected_correlation:
+  ST-06: {predicted: 0.60, note: "同じF1。0.7を超えたらどちらかを落とす（VR-045）"}
+  ST-04: {predicted: 0.55, note: "ベース上抜けという点で重なる"}
+  ST-09: {predicted: 0.40}
+  ST-12: {predicted: 0.00}
+
+data_required: ["日足OHLCV", "TOPIX日足"]

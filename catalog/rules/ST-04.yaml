@@ -1,0 +1,88 @@
+id: "ST-04"
+name: "SEPA / VCP（ボラティリティ収縮のブレイク）"
+source: "Mark Minervini（書籍）"
+factor: "F2"
+phase: 2
+extends: "../common.yaml"
+
+hypothesis: >
+  強い銘柄で、押し幅と出来高が段階的に縮小したあと（＝売り手が減ったあと）に
+  直近高値を超えると、動きの再開が起きやすい。
+
+regime_filter:
+  - "INDEX.close > SMA(INDEX.close, 200)"
+
+entry:
+  conditions:
+    # --- トレンドテンプレート（8条件すべて） ---
+    - "close > SMA(close, 150) and close > SMA(close, 200)"
+    - "SMA(close, 150) > SMA(close, 200)"
+    - "SMA(close, 200) > SMA(close, 200)[-20]"          # 200日線が上向き
+    - "SMA(close, 50) > SMA(close, 150)"
+    - "SMA(close, 50) > SMA(close, 200)"
+    - "close > SMA(close, 50)"
+    - "close >= LOWEST(low, 250) * 1.30"                 # 52週安値から+30%以上
+    - "close >= HIGHEST(high, 250) * 0.75"               # 52週高値の-25%以内
+    - "PCTRANK(return_126d, universe) >= 70"             # 相対強度 上位30%
+    # --- VCP（収縮）の判定 ---
+    - "vcp.contractions >= 3"
+    - "vcp.p3 <= vcp.p1 * 0.5"                           # 3つ目の押しが1つ目の半分以下
+    - "vcp.p1 > vcp.p2 > vcp.p3"
+    - "vcp.p3 <= 10.0"                                   # 最後の押しは10%以内
+    - "vcp.v1 > vcp.v2 > vcp.v3"                         # 各押しの平均出来高が段階的に減少
+    # --- ブレイク ---
+    - "close > vcp.pivot"
+    - "volume >= SMA(volume, 20) * 1.5"
+  rank: "PCTRANK(return_126d) の高い順"
+
+definitions:
+  vcp:
+    detection: >
+      直近90営業日を対象に、ATR(20)×1.5 を閾値とする ZigZag で極大・極小を抽出する。
+      極大→極小の下落率を「押し幅」とし、直近3つを新しい順に p3, p2, p1 とする。
+    pivot: "3つ目の押しの起点となった極大値（直近の高値）"
+    v1_v2_v3: "各押しの期間（極大日〜極小日）の平均出来高"
+
+exit:
+  stop:
+    initial: "max(vcp.p3_low, close_at_entry * 0.97)"    # 直近安値。ただし最大3%
+    trailing: "LOWEST(low, 10)"                          # +2R到達後に切り替え
+    trailing_activates_at: "+2R"
+    ratchet: true
+  rules:
+    - name: "50日線割れ"
+      condition: "close < SMA(close, 50)"
+    - name: "時間手仕舞い"
+      condition: "holding_days >= 20 and unrealized_r < 1.0"   # 20営業日で+1R未達なら降りる
+
+sizing:
+  method: "MM-01"
+  risk_pct: 1.0
+
+params_to_optimize:
+  - {name: pivot_volume_mult, default: 1.5, range: [1.2, 2.5], step: 0.1}
+  - {name: max_stop_pct,      default: 3.0, range: [2.0, 5.0], step: 0.5}
+  - {name: contraction_ratio, default: 0.5, range: [0.4, 0.7], step: 0.05}
+# 自由度 3。トレンドテンプレートの8条件は原法どおり固定し、探索対象にしない。
+
+deviations:
+  - what: "トレンドテンプレートの数値（150/200日線、+30%、-25%）を探索対象にしない"
+    why: "原法どおりに固定する。ここを動かすと自由度が10を超え、過剰最適化が避けられない"
+    impact: "日本株に最適化されていない可能性がある。固定のまま検証し、必要なら別途1回だけ見直す"
+  - what: "VCPの判定をZigZag＋押し幅比率で機械的に定義した"
+    why: "原法は目視によるパターン認識であり、そのままでは検証できない"
+    impact: "原著者の判断と一致しない検出が起こる。VCPの本質を捉えられていない可能性がある"
+  - what: "エントリーは終値でのブレイク確認 → 翌営業日9:00成行"
+    why: "S株はザラ場で執行できない（common.yaml）"
+    impact: "原法のピボット直上での買いより不利な価格になる。1日分の値上がりを取り逃す"
+  - what: "ピラミッディングを行わない"
+    why: "S株の制度上できない"
+    impact: "原法より期待値が低くなる見込み"
+
+expected_correlation:
+  ST-09: {predicted: 0.65, note: "**要注意**。エントリー条件に相対強度（PCTRANK 70以上）を含むため、構造的にF3と重なる。F2とF3の分離を壊す最有力候補。相関が0.7を超えたら、この条件の緩和か ST-09 との統合を検討する"}
+  ST-06: {predicted: 0.45, note: "どちらも上放れを買う"}
+  ST-38: {predicted: 0.50, note: "同じF2。収縮の測り方が押し幅とレンジ幅で異なる"}
+  ST-12: {predicted: 0.05, note: "符号が逆"}
+
+data_required: ["日足OHLCV", "TOPIX日足"]

@@ -1,0 +1,61 @@
+id: "ST-16"
+name: "移動平均乖離率の逆張り"
+source: "BNF 氏が公開インタビューで語った考え方"
+factor: "F4"
+phase: 3
+extends: "../common.yaml"
+
+hypothesis: >
+  銘柄ごとに「行き過ぎ」の水準は異なる。その銘柄自身の過去の乖離率分布のなかで
+  極端に下方乖離した状態は、需給の一時的な偏りであり戻りやすい。
+
+role_in_project: >
+  ST-12 が絶対的な閾値（RSI(2) < 10）で測るのに対し、本戦略は
+  **銘柄固有の分布**で測る。この違いがF4内での分離を生むかどうかが採用の判断基準になる。
+
+regime_filter:
+  - "INDEX.close > SMA(INDEX.close, 200)"
+
+definitions:
+  deviation: "(close / SMA(close, 25) - 1) * 100"       # 25日線からの乖離率（%）
+
+entry:
+  conditions:
+    - "close > SMA(close, 200)"
+    - "PCTRANK(deviation, 250) <= 5"                     # その銘柄の過去250日で下位5%タイル
+    - "deviation <= -8.0"                                # 下限の歯止め（分布が狭い銘柄を除外）
+  rank: "PCTRANK(deviation, 250) の低い順"
+
+exit:
+  stop:
+    initial: "close_at_entry - ATR(20) * 2.5"
+    trailing: null
+    ratchet: false
+  rules:
+    - name: "25日線への回復"
+      condition: "deviation >= 0"
+    - name: "時間手仕舞い"
+      condition: "holding_days >= 10"
+
+sizing: {method: "MM-01", risk_pct: 1.0}
+
+params_to_optimize:
+  - {name: ma_period,  default: 25, range: [15, 40],  step: 5}
+  - {name: percentile, default: 5,  range: [3, 10],   step: 1}
+  - {name: hold_days,  default: 10, range: [5, 15],   step: 5}
+# 自由度 3。
+
+deviations:
+  - what: "銘柄・時価総額の絞り込みを原法より緩くした"
+    why: "原法は大型株中心と語られるが、具体的な基準は公開されていない"
+    impact: "対象が広がり、性質の異なる銘柄が混ざる"
+  - what: "ロングのみ・翌営業日9:00成行"
+    why: "現物のみ・S株の制約"
+    impact: "ST-12 と同じく、底で買えず翌朝の反発後に買うことになる"
+
+expected_correlation:
+  ST-12: {predicted: 0.70, note: "**採用の可否を決める数字。** 0.7以上ならF4は1本にし、成績の良い方を残す"}
+  ST-06: {predicted: 0.00}
+  ST-04: {predicted: 0.05}
+
+data_required: ["日足OHLCV", "TOPIX日足"]

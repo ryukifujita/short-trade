@@ -2,7 +2,7 @@
 # このファイルが唯一の正本。docs/03 と docs/17 の表はここから生成する。
 # status: selected_primary / selected_secondary = 合議に組み込む代表手法
 #         reserve = 在庫（将来の入れ替え候補） / filter / regime_input / sizing / principle / out_of_scope
-version: 2
+version: 3
 updated: 2026-09-10
 factors:
   F1: "トレンド追随・ブレイク"
@@ -16,6 +16,9 @@ constraints:
   max_per_factor: 2                 # VR-051
   same_factor_correlation: 0.7      # VR-045 これ以上は同一因子として扱う
   target_mean_correlation: 0.5      # BR-001 成功指標
+rule_specs_dir: "catalog/rules"   # 代表8本の条件式。common.yaml を継承する
+common_spec: "catalog/common.yaml"
+schema: "catalog/schema.md"
 entries:
   - id: "ST-01"
     name: "ピボタルポイント"
@@ -71,7 +74,7 @@ entries:
     implementability: "A"
     data_required: "日足"
     note: "F2の代表。トレンドテンプレート＋収縮判定が日足のみで完結する"
-    rules_written: false          # 条件式の書き下し（Phase 1）
+    rules_written: true           # catalog/rules/ST-04.yaml
     backtested: false
   - id: "ST-05"
     name: "出来高ブレイクアウト"
@@ -99,7 +102,7 @@ entries:
     implementability: "A"
     data_required: "日足"
     note: "F1の代表。ルールが最も単純で曖昧さがなく、検証基盤の正しさを確認する基準線（ベースライン）として最適"
-    rules_written: false          # 条件式の書き下し（Phase 1）
+    rules_written: true           # catalog/rules/ST-06.yaml
     backtested: false
   - id: "ST-07"
     name: "エピソディック・ピボット"
@@ -141,7 +144,7 @@ entries:
     implementability: "A"
     data_required: "日足"
     note: "F3の代表。相対順位のみで完結し、無料データで実装できる"
-    rules_written: false          # 条件式の書き下し（Phase 1）
+    rules_written: true           # catalog/rules/ST-09.yaml
     backtested: false
   - id: "ST-10"
     name: "RSレーティング"
@@ -183,7 +186,7 @@ entries:
     implementability: "A"
     data_required: "日足"
     note: "F4の代表。上昇トレンド中の押し目のみを買うため、買い専用スコープと整合する"
-    rules_written: false          # 条件式の書き下し（Phase 1）
+    rules_written: true           # catalog/rules/ST-12.yaml
     backtested: false
   - id: "ST-13"
     name: "ボリンジャー%b / 連続陰線"
@@ -239,7 +242,7 @@ entries:
     implementability: "B"
     data_required: "日足"
     note: "F4の第2代表候補。オシレーターではなく価格距離で測るため ST-12 と factor 内で分離できる可能性がある。相関確認が採用条件"
-    rules_written: false          # 条件式の書き下し（Phase 1）
+    rules_written: true           # catalog/rules/ST-16.yaml
     backtested: false
   - id: "ST-17"
     name: "小型株分散逆張り"
@@ -337,7 +340,7 @@ entries:
     implementability: "A"
     data_required: "日足＋決算"
     note: "F5の代表。決算データの無料入手（Q-12）が着手条件"
-    rules_written: false          # 条件式の書き下し（Phase 1）
+    rules_written: true           # catalog/rules/ST-23.yaml
     backtested: false
   - id: "ST-24"
     name: "決算ギャップ・デイトレ"
@@ -505,7 +508,7 @@ entries:
     implementability: "A"
     data_required: "週足（30週線）"
     note: "F1の第2代表。30週線ベースで ST-06（20/55日）と時間スケールが異なるため、同一因子内で分離できる見込み"
-    rules_written: false          # 条件式の書き下し（Phase 1）
+    rules_written: true           # catalog/rules/ST-35.yaml
     backtested: false
   - id: "ST-36"
     name: "一目均衡表"
@@ -547,7 +550,7 @@ entries:
     implementability: "A"
     data_required: "日足"
     note: "F2の第2代表。**日足版（NR7判定→翌日始値で執行）ならS株の9:00執行枠で成立する**。ORB部分はスコープ外"
-    rules_written: false          # 条件式の書き下し（Phase 1）
+    rules_written: true           # catalog/rules/ST-38.yaml
     backtested: false
   - id: "ST-39"
     name: "ボラティリティブレイクアウト"

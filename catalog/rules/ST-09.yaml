@@ -1,0 +1,70 @@
+id: "ST-09"
+name: "クロスセクショナル・モメンタム"
+source: "Jegadeesh & Titman（学術） / RSレーティング（O'Neil）の実装として ST-10 を吸収"
+factor: "F3"
+phase: 2
+extends: "../common.yaml"
+
+hypothesis: >
+  過去6か月ほどの相対リターンが上位の銘柄は、その後しばらく相対的に強いままでいやすい。
+  直近1か月は短期反転が効くため除外する。
+
+regime_filter:
+  - "INDEX.close > SMA(INDEX.close, 200)"
+
+rebalance:
+  # 日次で入れ替えるとノイズと売買回数が増えるため月次に固定する。
+  schedule: "毎月最終営業日の終値で判定 → 翌営業日 09:00 執行枠"
+  turnover_guard: "同一銘柄を1営業日に1回転までしか行わない（RM-006）"
+
+entry:
+  conditions:
+    - "PCTRANK(momentum_score, universe) >= 90"          # 上位10%
+    - "close > SMA(close, 200)"                           # 個別銘柄も上昇トレンドであること
+  rank: "momentum_score の高い順。上位から最大 max_positions まで採用"
+
+definitions:
+  momentum_score: "close[-21] / close[-147] - 1"          # 直近21営業日をスキップした126営業日リターン
+  max_positions: 5
+
+exit:
+  stop:
+    initial: "close_at_entry - ATR(20) * 2.5"
+    trailing: null                                        # 月次リバランスが実質の手仕舞い
+    ratchet: false
+  rules:
+    - name: "順位からの脱落"
+      condition: "PCTRANK(momentum_score, universe) < 70"  # 上位30%を割ったら次回リバランスで手仕舞い
+      applies_at: "リバランス日のみ"
+    - name: "レジーム転換"
+      condition: "INDEX.close < SMA(INDEX.close, 200)"
+
+sizing:
+  method: "MM-02"                                          # ATRベース。ST-06/ST-04 の固定比率と方式を変える
+  risk_pct: 1.0
+  atr_multiple: 2.5
+
+params_to_optimize:
+  - {name: lookback_days, default: 126, range: [63, 252], step: 21}
+  - {name: skip_days,     default: 21,  range: [0, 42],   step: 21}
+  - {name: top_pct,       default: 10,  range: [5, 25],   step: 5}
+# 自由度 3。
+
+deviations:
+  - what: "ST-10（RSレーティング）を別戦略とせず、本戦略の順位算出方式として吸収した"
+    why: "期間加重の違いだけで実質同一。別戦略として立てると見かけの分散になる（docs/17 §17.3）"
+    impact: "なし。必要なら momentum_score の定義を期間加重版に差し替えて比較する"
+  - what: "月次リバランスに固定した"
+    why: "日次では売買回数が増え、S株の1日3回執行と5万円の資金では回らない"
+    impact: "月中の順位変動に追随できない"
+  - what: "ロングのみ（原法はロング・ショートのスプレッド）"
+    why: "現物のみのスコープ"
+    impact: "**学術的な超過収益の相当部分は下位銘柄のショートに由来する。ロングのみでは市場全体の変動をそのまま受ける**。この戦略が最も原法から遠い"
+
+expected_correlation:
+  ST-04: {predicted: 0.65, note: "**要注意**。ST-04 のエントリー条件が相対強度を含むため"}
+  ST-06: {predicted: 0.35, note: "強い銘柄は高値も更新しやすい"}
+  ST-12: {predicted: -0.10, note: "符号が逆。負の相関を期待する"}
+  ST-35: {predicted: 0.40, note: "ステージ2の銘柄は相対強度も高い傾向"}
+
+data_required: ["日足OHLCV", "TOPIX日足"]

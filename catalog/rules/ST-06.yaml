@@ -1,0 +1,65 @@
+id: "ST-06"
+name: "タートルズ（ドンチャン20/10）"
+source: "Richard Dennis / Bill Eckhardt（書籍）"
+factor: "F1"
+phase: 2
+extends: "../common.yaml"
+
+hypothesis: >
+  価格が直近20営業日の高値を超えると、乗り遅れた買いと売り方の損切りが続き、
+  短期間はその方向に動きが継続しやすい。
+
+role_in_project: >
+  ベースライン。ルールが最も単純で解釈の余地がないため、検証基盤そのものが
+  正しく動いているかを確認する基準線として使う。他の戦略はこれに勝てなければ採用しない。
+
+regime_filter:
+  - "INDEX.close > SMA(INDEX.close, 200)"        # common.yaml と同一（明示のため再掲）
+
+entry:
+  conditions:
+    - "close > HIGHEST(high, 20)[-1]"            # 当日終値が「前日までの20日高値」を上抜け
+    - "volume > SMA(volume, 20) * 1.0"           # 出来高が枯れていないことの最低確認
+  rank: "20日高値からの上抜け率が大きい順"        # 候補が同時多発したときの優先順位
+
+exit:
+  stop:
+    initial: "LOWEST(low, 10)"                   # エントリー日時点の10日安値
+    trailing: "LOWEST(low, 10)"                  # 毎日更新（切り上げのみ。切り下げない）
+    ratchet: true
+  rules:
+    - name: "トレーリングストップ割れ"
+      condition: "close < LOWEST(low, 10)[-1]"
+    - name: "時間手仕舞い"
+      condition: "holding_days >= 40"
+
+sizing:
+  method: "MM-01"
+  risk_pct: 1.0
+
+params_to_optimize:
+  - {name: entry_lookback, default: 20, range: [10, 40], step: 5}
+  - {name: exit_lookback,  default: 10, range: [5, 20],  step: 5}
+# 自由度 2。System2（55/20日）とユニット追加は採用しないため探索対象に含めない。
+
+deviations:
+  - what: "System2（55日ブレイク／20日エグジット）を採用しない"
+    why: "自由度が倍になり、多重検定バイアスが増える（VR-050）。ベースラインとしての役割上、単純さを優先する"
+    impact: "長期トレンドの取りこぼしが増える見込み"
+  - what: "ユニット追加（ピラミッディング）を行わない"
+    why: "S株は同一日・同一銘柄で各執行タイミング1件のみ。制度上できない（MM-04 スコープ外）"
+    impact: "原法の収益の相当部分は買い増しに由来するため、期待値は原法より低くなる見込み"
+  - what: "空売りを行わない"
+    why: "現物のみのスコープ（D-02/D-03）"
+    impact: "下降局面の収益機会を失う。レジームフィルタで回避するのみ"
+  - what: "逆指値ではなく論理ストップ＋翌執行枠の成行"
+    why: "S株は逆指値が置けない（RM-001a）"
+    impact: "損切り価格より不利な価格で約定する。想定損失を2倍で見積もる（RM-001b）"
+
+expected_correlation:
+  ST-04: {predicted: 0.45, note: "どちらも上放れを買う。ST-04 は事前の収縮を要求する分、シグナル日がずれる見込み"}
+  ST-35: {predicted: 0.60, note: "同じF1。30週線ベースと20日ブレイクで時間スケールは異なるが方向は同じ"}
+  ST-09: {predicted: 0.35, note: "強い銘柄が高値を更新しやすいため、間接的に重なる"}
+  ST-12: {predicted: 0.00, note: "符号が逆。ここが分散の主軸。負の相関でも驚かない"}
+
+data_required: ["日足OHLCV", "TOPIX日足"]
