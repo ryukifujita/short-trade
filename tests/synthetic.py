@@ -56,3 +56,36 @@ def rising_index(n: int, start="2024-01-01") -> pd.DataFrame:
     end = pd.bdate_range(start, periods=n)[-1]
     dates = pd.bdate_range(end=end, periods=len(closes))          # 銘柄の最終日まで確実に覆う
     return pd.DataFrame({"close": closes}, index=dates)
+
+
+def vcp_pattern(spread=0.005):
+    """ST-04 が拾うべき形: 長い上昇 → 押し 12% → 7% → 3%（出来高も縮小）→ 出来高2倍で上放れ。
+
+    戻り値: (bars, breakout_pos)。breakout_pos はピボットを終値で上抜けた日の位置。
+    """
+    closes, vols = [], []
+    # 300本の上昇（SMA200 が上向き・52週安値の +30% 以上を満たす）
+    for i in range(300):
+        closes.append(100.0 * (1.0037 ** i)); vols.append(1.0)
+    peak1 = closes[-1]
+
+    def leg(start, end, n, vol):
+        for k in range(1, n + 1):
+            closes.append(start + (end - start) * k / n); vols.append(vol)
+
+    leg(peak1, peak1 * 0.88, 12, 1.0)          # 押し1: -12%
+    leg(closes[-1], peak1 * 1.02, 12, 0.9)     # 戻り → 新高値
+    peak2 = closes[-1]
+    leg(peak2, peak2 * 0.93, 10, 0.7)          # 押し2: -7%
+    leg(closes[-1], peak2 * 1.01, 10, 0.8)     # 戻り
+    peak3 = closes[-1]
+    leg(peak3, peak3 * 0.97, 8, 0.45)          # 押し3: -3%
+    leg(closes[-1], peak3 * 0.995, 6, 0.4)     # ピボット直下で横ばい
+    breakout_pos = len(closes)
+    closes.append(peak3 * 1.03); vols.append(2.2)   # 上放れ、出来高2.2倍
+    for k in range(1, 15):                            # その後も上昇
+        closes.append(closes[-1] * 1.004); vols.append(1.2)
+
+    bars = make_bars(closes, spread=spread, gap=0.001)
+    bars["volume"] = np.array(vols) * 1_000_000.0
+    return bars, breakout_pos

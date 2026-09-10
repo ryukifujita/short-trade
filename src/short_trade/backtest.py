@@ -22,7 +22,8 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-from .indicators import build_namespace, evaluate
+from .detectors import DETECTORS
+from .indicators import _Frame, build_namespace, evaluate
 from .spec import StrategySpec
 
 # ポジション単位でしか評価できない名前（式ではなく Python 側で判定する）
@@ -349,6 +350,14 @@ def run(
     trailing_at = _parse_r(spec.raw.get("exit", {}).get("stop", {}).get("trailing_activates_at"))
     rebalance = spec.raw.get("rebalance")
 
+    def _bind_detectors(ns: dict, df: pd.DataFrame) -> None:
+        for name, cfg_d in spec.detector_definitions.items():
+            kind = cfg_d["detector"]
+            if kind not in DETECTORS:
+                raise UnsupportedSpec(f"{spec.id}: 検出器 {kind!r} は登録されていません（detectors.py）")
+            params = {k: v for k, v in cfg_d.items() if k not in ("detector", "note", "detection", "pivot", "v1_v2_v3")}
+            ns[name] = _Frame(DETECTORS[kind](df, **params))
+
     # --- 事前パス: クロスセクショナル順位 ---
     xrank_names = _xrank_targets(spec)
     xranks: dict[str, pd.DataFrame] = {}
@@ -356,6 +365,7 @@ def run(
         raw_values: dict[str, dict[str, pd.Series]] = {n: {} for n in xrank_names}
         for sym, df in data.items():
             ns0 = build_namespace(df, index=index)
+            _bind_detectors(ns0, df)
             for name, expr in spec.definitions.items():
                 ns0[name] = _eval_or_unsupported(spec.id, f"定義 {name}", expr, ns0) if isinstance(expr, str) else expr
             for n in xrank_names:
@@ -370,6 +380,7 @@ def run(
     precomputed: dict[str, dict[str, Any]] = {}
     for sym, df in data.items():
         ns = build_namespace(df, index=index)
+        _bind_detectors(ns, df)
         for n, frame in xranks.items():
             if sym in frame.columns:
                 ns[_xrank_name(n)] = frame[sym].reindex(df.index)

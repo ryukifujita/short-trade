@@ -19,4 +19,7 @@ if [ ! -f "data/jquants/earnings.parquet" ]; then
 fi
 ./.venv/bin/python -m short_trade compare
 echo ""
+echo "----- 戦略間の相関（Phase 2 の4本） -----"
+./.venv/bin/python -m short_trade correlate
+echo ""
 read -r -p "Enter キーで閉じます..."

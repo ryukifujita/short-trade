@@ -83,3 +83,21 @@ def test_evaluate_handles_and_between_series():
     ns = build_namespace(df)
     out = evaluate("close > SMA(close, 20) and volume > 0", ns).fillna(False)
     assert bool(out.iloc[-1])
+
+
+@pytest.mark.parametrize("expr,expected", [
+    ("a > b > c", "(a > b) & (b > c)"),
+    ("x.p1 > x.p2 > x.p3", "(x.p1 > x.p2) & (x.p2 > x.p3)"),
+    ("a >= b", "a >= b"),
+    ("f(a, b) > g(c) > 1", "(f(a, b) > g(c)) & (g(c) > 1)"),
+    ("a > b and c < d", "(a > b) & (c < d)"),
+])
+def test_expand_chained_comparison(expr, expected):
+    from short_trade.indicators import normalize_logical
+    assert normalize_logical(expr) == expected
+
+
+def test_streak_counts_consecutive_true():
+    from short_trade.indicators import STREAK
+    x = s([1, 1, 0, 1, 1, 1])
+    assert list(STREAK(x > 0)) == [1, 2, 0, 1, 2, 3]

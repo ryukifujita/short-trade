@@ -18,4 +18,7 @@ if not exist "data\jquants\earnings.parquet" (
 )
 ".venv\Scripts\python.exe" -m short_trade compare
 echo.
+echo ----- 戦略間の相関（Phase 2 の4本） -----
+".venv\Scripts\python.exe" -m short_trade correlate
+echo.
 pause

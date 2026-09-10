@@ -15,6 +15,7 @@ regime_filter:
 definitions:
   ma30w: "SMA(close, 150)"                  # 30週線の日足換算
   base_high: "HIGHEST(high, 150)[-1]"       # 直近30週のレンジ上限（前日まで）
+  stage_1_days: "STREAK(close < HIGHEST(high, 150)[-1])[-1]"   # 前日までレンジ上限の下に居続けた日数＝底固めの長さ
 
 entry:
   conditions:

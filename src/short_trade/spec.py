@@ -68,10 +68,16 @@ class StrategySpec:
                 if isinstance(v, (str, int, float, bool))}
 
     @property
-    def unsupported_definitions(self) -> list[str]:
-        """専用の実装が必要な定義（入れ子の辞書）。"""
+    def detector_definitions(self) -> dict[str, dict]:
+        """`{detector: 名前, ...引数}` 形式の定義。detectors.py の登録名で解決する。"""
         raw = self.raw.get("definitions") or {}
-        return [k for k, v in raw.items() if isinstance(v, dict)]
+        return {k: v for k, v in raw.items() if isinstance(v, dict) and "detector" in v}
+
+    @property
+    def unsupported_definitions(self) -> list[str]:
+        """専用の実装が必要だが detector 指定の無い定義。"""
+        raw = self.raw.get("definitions") or {}
+        return [k for k, v in raw.items() if isinstance(v, dict) and "detector" not in v]
 
     @property
     def rank(self) -> tuple[str, bool] | None:

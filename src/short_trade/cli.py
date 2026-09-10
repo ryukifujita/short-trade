@@ -7,6 +7,8 @@
   python -m short_trade backtest --strategy ST-06 --start 2015-01-01 --end 2025-12-31
   python -m short_trade fetch --earnings           決算発表予定日を契約範囲ぶん取得（決算跨ぎ禁止に使う）
   python -m short_trade compare                    キャッシュからリスク率×スリッページの比較表を出す
+  python -m short_trade correlate                  Phase 2 の戦略間の相関を測る（VR-045）
+  python -m short_trade fetch --universe --top 300 上場銘柄一覧＋時価総額で上位 N 銘柄を取得
 """
 from __future__ import annotations
 
@@ -112,6 +114,45 @@ def cmd_fetch(args) -> int:
     from .jquants import JQuantsClient, to_bars, to_index
 
     client = JQuantsClient()
+    if args.universe:
+        import json as _json
+
+        start = client.coverage()[0]
+        info = client.listed_info()
+        latest = client.daily_quotes(code="7203", start=None, end=None).tail(1)
+        if latest.empty:
+            raise SystemExit("最新日が特定できませんでした")
+        latest_date = str(pd.to_datetime(latest["Date"].iloc[-1]).date())
+        print(f"全銘柄の {latest_date} 時点の時価総額を取得しています…")
+        snap = client.daily_quotes(on=latest_date)
+        if "MktCap" not in snap.columns:
+            raise SystemExit(f"MktCap 列がありません。実際の列: {list(snap.columns)}")
+        merged = snap.merge(info[["Code", "CoName", "MktNm"]], on="Code", how="left")
+        if args.market:
+            hit = merged["MktNm"].astype(str).str.contains(args.market, na=False)
+            if hit.any():
+                merged = merged[hit]
+            else:
+                print(f"警告: 市場区分 '{args.market}' に一致する銘柄がありません。区分の例: {merged['MktNm'].dropna().unique()[:5]}")
+        merged = merged.dropna(subset=["MktCap"]).sort_values("MktCap", ascending=False).head(args.top)
+        codes = [str(c)[:4] if len(str(c)) == 5 and str(c).endswith("0") else str(c) for c in merged["Code"]]
+        (DATA).mkdir(parents=True, exist_ok=True)
+        (DATA / "universe.json").write_text(_json.dumps(
+            {"as_of": latest_date, "market": args.market, "top": args.top,
+             "codes": codes, "names": merged["CoName"].astype(str).tolist()},
+            ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"時価総額上位 {len(codes)} 銘柄を選びました。日足を取得します（{start} から）…")
+        ok = 0
+        for i, code in enumerate(codes, 1):
+            try:
+                bars = to_bars(client.cached_daily_quotes(code, start=start, end=None))
+                ok += 1 if len(bars) else 0
+                if i % 25 == 0 or i == len(codes):
+                    print(f"  [{i}/{len(codes)}] 取得済み {ok}")
+            except Exception as e:
+                print(f"  {code}: 失敗 {str(e)[:80]}")
+        print(f"完了: {ok} 銘柄。universe.json に選定結果を保存しました")
+        return 0
     if args.earnings:
         start = client.coverage()[0]
         print(f"決算発表予定日を {start} から取得します。日ごとの問い合わせになるため数分〜十数分かかります…")
@@ -232,6 +273,33 @@ def cmd_compare(args) -> int:
     return 0
 
 
+def cmd_correlate(args) -> int:
+    from .correlate import format_table, measure, save
+
+    data, index, earnings, skipped = _load_cache(args.start, args.end)
+    if index is None:
+        raise SystemExit("指数データがありません。setup を先に実行してください")
+    specs = _specs()
+    if args.phase:
+        specs = [s for s in specs if s.phase == args.phase]
+    if args.strategies:
+        want = {x.strip() for x in args.strategies.split(",")}
+        specs = [s for s in specs if s.id in want]
+    print(f"銘柄 {len(data)} / 相関測定用の資金 {args.equity:,.0f}円（サイズ制約をほぼ外して構造を見る）")
+    rep = measure(specs, data, index=index, equity=args.equity, earnings=earnings)
+    print("\n=== 戦略間の相関（docs/18 §18.4 の事前予想との照合） ===")
+    print(format_table(rep))
+    out = ROOT / "data" / "correlation_report.json"
+    save(rep, out)
+    flags = rep.flags()
+    if flags:
+        print("\n0.7 を超えたペアは同一因子として扱い、代表を1本に絞る（VR-045 / DEC-062）:")
+        for a, b, v in flags:
+            print(f"  {a} と {b}: {v:.2f}")
+    print(f"\n{out.relative_to(ROOT)} に書き出しました。この内容を報告してください")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="short_trade", description="短期売買ツール")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -251,6 +319,9 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--codes", help="カンマ区切りの銘柄コード。省略すると上場銘柄一覧を取得")
     f.add_argument("--index", help="指数を取得して index.parquet に保存。'topix' または代用ETFのコード（例: 1306）")
     f.add_argument("--earnings", action="store_true", help="決算発表予定日を契約範囲ぶん取得して earnings.parquet に保存")
+    f.add_argument("--universe", action="store_true", help="上場銘柄一覧＋時価総額で上位 N 銘柄の日足を取得")
+    f.add_argument("--market", default="プライム", help="--universe の市場区分（部分一致）。空文字で全市場")
+    f.add_argument("--top", type=int, default=300, help="--universe で選ぶ銘柄数（時価総額上位）")
     f.add_argument("--start", default=None, help="省略すると契約が覆う最古日から取得します")
     f.add_argument("--end", default=None)
     f.add_argument("--refresh", action="store_true")
@@ -273,6 +344,14 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--start", default=None)
     c.add_argument("--end", default=None)
     c.set_defaults(func=cmd_compare)
+
+    r = sub.add_parser("correlate", help="戦略間の相関を測る（VR-045）")
+    r.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2 の4本）")
+    r.add_argument("--strategies", default=None, help="カンマ区切りで明示（--phase より優先）")
+    r.add_argument("--equity", type=float, default=10_000_000)
+    r.add_argument("--start", default=None)
+    r.add_argument("--end", default=None)
+    r.set_defaults(func=cmd_correlate)
     b.set_defaults(func=cmd_backtest)
 
     args = p.parse_args(argv)

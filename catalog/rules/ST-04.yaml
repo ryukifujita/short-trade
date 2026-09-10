@@ -38,11 +38,14 @@ entry:
 definitions:
   return_126d: "close / close[-126] - 1"      # 相対強度の元になる126営業日リターン
   vcp:
-    detection: >
-      直近90営業日を対象に、ATR(20)×1.5 を閾値とする ZigZag で極大・極小を抽出する。
-      極大→極小の下落率を「押し幅」とし、直近3つを新しい順に p3, p2, p1 とする。
-    pivot: "3つ目の押しの起点となった極大値（直近の高値）"
-    v1_v2_v3: "各押しの期間（極大日〜極小日）の平均出来高"
+    detector: vcp                 # src/short_trade/detectors.py の登録名
+    lookback: 90                  # 直近90営業日を対象
+    atr_period: 20
+    atr_mult: 1.5                 # ATR(20)×1.5 を閾値とする ZigZag で山・谷を確定する
+    note: >
+      山→谷の下落率を「押し幅」とし、t までに確定した直近3つを新しい順に p3, p2, p1 とする。
+      pivot は直近の山、p3_low は直近の谷、v1〜v3 は各押し区間の平均出来高。
+      転換点は反転が閾値を超えた日に初めて見える（因果性）。
 
 exit:
   stop:

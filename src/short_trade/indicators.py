@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
-    "SMA", "EMA", "ATR", "RSI", "HIGHEST", "LOWEST", "PCTRANK", "SHIFT",
-    "expand_shifts", "normalize_logical", "evaluate",
+    "SMA", "EMA", "ATR", "RSI", "HIGHEST", "LOWEST", "PCTRANK", "SHIFT", "STREAK",
+    "expand_shifts", "normalize_logical", "expand_chained_comparison", "evaluate",
 ]
 
 
@@ -66,6 +66,17 @@ def RSI(x: pd.Series, n: int) -> pd.Series:
     return out.where(avg_loss.ne(0.0) | avg_gain.isna(), 100.0)
 
 
+def STREAK(cond: pd.Series) -> pd.Series:
+    """条件が連続して成立している本数（当日を含む）。不成立で 0 に戻る。"""
+    c = cond.fillna(False).astype(bool).to_numpy()
+    out = np.zeros(len(c), dtype=float)
+    run = 0
+    for i, v in enumerate(c):
+        run = run + 1 if v else 0
+        out[i] = run
+    return pd.Series(out, index=cond.index)
+
+
 def PCTRANK(x: pd.Series, n: int) -> pd.Series:
     """直近 n 本の分布における当日値のパーセンタイル（0〜100）。当日を含む。"""
     return x.rolling(n, min_periods=n).rank(pct=True) * 100.0
@@ -96,6 +107,49 @@ def _split_top_level(expr: str, sep: str) -> list[str]:
     return parts
 
 
+_CMP_OPS = ("<=", ">=", "<", ">")
+
+
+def _split_top_level_cmp(expr: str) -> list[str]:
+    """括弧の外側にある比較演算子で式を分割し、[被演算子, 演算子, 被演算子, ...] を返す。"""
+    parts, depth, start, i = [], 0, 0, 0
+    n = len(expr)
+    while i < n:
+        c = expr[i]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif depth == 0:
+            for op in _CMP_OPS:
+                if expr.startswith(op, i) and not (op in ("<", ">") and expr[i + 1:i + 2] == "="):
+                    parts.append(expr[start:i].strip())
+                    parts.append(op)
+                    i += len(op)
+                    start = i
+                    break
+            else:
+                i += 1
+                continue
+            continue
+        i += 1
+    parts.append(expr[start:].strip())
+    return parts
+
+
+def expand_chained_comparison(expr: str) -> str:
+    """`a > b > c` を `(a > b) & (b > c)` に展開する。
+
+    Python の連鎖比較は内部で `and` を使うため、Series には使えない。
+    仕様には `vcp.p1 > vcp.p2 > vcp.p3` のように自然に書けるようにしておく。
+    """
+    parts = _split_top_level_cmp(expr)
+    if len(parts) < 5:            # 比較が1つ以下なら連鎖ではない
+        return expr
+    operands, ops = parts[0::2], parts[1::2]
+    return " & ".join(f"({a} {op} {b})" for a, op, b in zip(operands, ops, operands[1:]))
+
+
 def normalize_logical(expr: str) -> str:
     """`and` / `or` を Series 用の `&` / `|` に変換する。
 
@@ -107,7 +161,7 @@ def normalize_logical(expr: str) -> str:
         parts = _split_top_level(expr, sep)
         if len(parts) > 1:
             return op.join(f"({normalize_logical(p.strip())})" for p in parts)
-    return expr
+    return expand_chained_comparison(expr)
 
 
 def expand_shifts(expr: str) -> str:
@@ -189,7 +243,7 @@ def build_namespace(df: pd.DataFrame, *, index: pd.DataFrame | None = None,
 
     ns: dict = {
         "SMA": SMA, "EMA": EMA, "RSI": _rsi,
-        "HIGHEST": HIGHEST, "LOWEST": LOWEST, "PCTRANK": PCTRANK, "SHIFT": SHIFT,
+        "HIGHEST": HIGHEST, "LOWEST": LOWEST, "PCTRANK": PCTRANK, "SHIFT": SHIFT, "STREAK": STREAK,
         "ATR": lambda n: ATR(n, high=df["high"], low=df["low"], close=df["close"]),
         "__builtins__": _SAFE_BUILTINS,
     }

@@ -7,7 +7,7 @@
 
 **はじめての方**: [docs/22 はじめかた](docs/22_はじめかた.md) を見てください。
 `start_windows.bat`（Windows）または `start_mac.command`（Mac）を**ダブルクリックするだけ**で設定画面が開きます。
-2回目以降は `run_windows.bat` / `run_mac.command` で比較レポートが出ます。
+2回目以降は `run_windows.bat` / `run_mac.command` で比較レポートと戦略間の相関が出ます。
 
 **コマンドで動かす場合**:
 
@@ -15,7 +15,7 @@
 pip install -r requirements.txt
 PYTHONPATH=src python -m short_trade setup       # ブラウザで認証情報を入力 → 接続確認〜基準線まで自動
 PYTHONPATH=src python -m short_trade selfcheck   # 仕様ファイルの検査（ネットワーク不要）
-python -m pytest tests/ -q                       # テスト 61件
+python -m pytest tests/ -q                       # テスト 75件
 ```
 
 実装の現況は [docs/20](docs/20_実装状況.md) を参照してください。実装は要求定義の合意後、`docs/10_ロードマップと段階スコープ.md` の
@@ -44,6 +44,7 @@ python -m pytest tests/ -q                       # テスト 61件
 | 16 | [網羅性と統合合理性の現状評価](docs/16_網羅性と統合合理性の現状評価.md) | 何がどこまでできていて、何ができていないか |
 | 17 | [因子分類と代表手法の選抜](docs/17_因子分類と代表手法の選抜.md) | 63件への因子タグ付与と、合議に組み込む8本の選抜 |
 | 18 | [戦略仕様 — 代表8本の条件式](docs/18_戦略仕様_代表8本.md) | 書き下した条件式、原法からの改変、相関の事前予想 |
+| 25 | [VCP検出器と相関測定](docs/25_VCP検出器と相関測定.md) | ST-04 が動くように。相関測定・ユニバース拡張 |
 | 24 | [実データ初回結果](docs/24_実データ初回結果.md) | ST-06 基準線が実データで動いた。76%が「1株未満」で却下 |
 | 23 | [J-Quants V2移行](docs/23_JQuants_V2移行.md) | 403の原因と、公式クライアントへの切り替え |
 | 22 | [はじめかた](docs/22_はじめかた.md) | **PCでの初回セットアップ**。ターミナル操作なしで動かす手順 |
