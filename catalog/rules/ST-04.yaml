@@ -36,6 +36,7 @@ entry:
   rank: "PCTRANK(return_126d) の高い順"
 
 definitions:
+  return_126d: "close / close[-126] - 1"      # 相対強度の元になる126営業日リターン
   vcp:
     detection: >
       直近90営業日を対象に、ATR(20)×1.5 を閾値とする ZigZag で極大・極小を抽出する。

@@ -34,7 +34,8 @@ regime:
   # これが唯一の防御手段になる。
   market_filter:
     index: TOPIX
-    condition: "close > SMA(close, 200)"
+    # `close` と書くと銘柄の終値に束縛されてしまうため、指数の参照は必ず INDEX. を付ける。
+    condition: "INDEX.close > SMA(INDEX.close, 200)"
   hysteresis_days: 3        # 3営業日連続で条件を満たして初めて切り替える（DEC-012）
 
 # ---------- リスク ----------
