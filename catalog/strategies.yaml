@@ -1,0 +1,901 @@
+# short-trade 手法カタログ（正本 / FR-C01）
+# このファイルが唯一の正本。docs/03 と docs/17 の表はここから生成する。
+# status: selected_primary / selected_secondary = 合議に組み込む代表手法
+#         reserve = 在庫（将来の入れ替え候補） / filter / regime_input / sizing / principle / out_of_scope
+version: 2
+updated: 2026-09-10
+factors:
+  F1: "トレンド追随・ブレイク"
+  F2: "ボラティリティ収縮→拡大"
+  F3: "クロスセクショナル相対強度"
+  F4: "短期平均回帰"
+  F5: "イベント・ドリフト"
+  F6: "需給・オーダーフロー"
+constraints:
+  max_concurrent_strategies: 8      # VR-051
+  max_per_factor: 2                 # VR-051
+  same_factor_correlation: 0.7      # VR-045 これ以上は同一因子として扱う
+  target_mean_correlation: 0.5      # BR-001 成功指標
+entries:
+  - id: "ST-01"
+    name: "ピボタルポイント"
+    source: "Jesse Livermore（書籍）"
+    factor: "F1"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "F1の原型。ST-35/ST-06 と同一因子で相関が高く、代表からは外す。ピラミッディングは MM-04 が S株で使えないため要素も限定的"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-02"
+    name: "ボックス理論"
+    source: "Nicolas Darvas（書籍）"
+    factor: "F1"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "レンジ検出のロジックは ST-35 のステージ1判定に取り込む"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-03"
+    name: "CAN SLIM"
+    source: "William O'Neil（書籍）"
+    factor: "F1"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足＋業績＋コンセンサス"
+    note: "ファンダ条件（EPS成長・コンセンサス）が無料データで揃わない。データが揃った段階で復帰"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-04"
+    name: "SEPA / VCP"
+    source: "Mark Minervini（書籍）"
+    factor: "F2"
+    role: "signal"
+    status: "selected_primary"
+    phase: 2
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "F2の代表。トレンドテンプレート＋収縮判定が日足のみで完結する"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-05"
+    name: "出来高ブレイクアウト"
+    source: "Dan Zanger（公開情報）"
+    factor: "F1"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ〜スイング"
+    direction: "買い"
+    implementability: "B"
+    data_required: "分足"
+    note: "ザラ場での押し目追随が本体。S株では執行できない"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-06"
+    name: "タートルズ（ドンチャン）"
+    source: "Richard Dennis / Bill Eckhardt（書籍）"
+    factor: "F1"
+    role: "signal"
+    status: "selected_primary"
+    phase: 2
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "F1の代表。ルールが最も単純で曖昧さがなく、検証基盤の正しさを確認する基準線（ベースライン）として最適"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-07"
+    name: "エピソディック・ピボット"
+    source: "Kristjan Kullamägi（公開情報）"
+    factor: "F5"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "デイ〜スイング"
+    direction: "買い"
+    implementability: "B"
+    data_required: "日足＋開示"
+    note: "材料ギャップの検出に開示データが要る。ST-23 と同一因子"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-08"
+    name: "200日線フィルタ / RR要求"
+    source: "Paul Tudor Jones（公開情報）"
+    factor: "-"
+    role: "regime"
+    status: "regime_input"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "日足"
+    note: "個別銘柄・指数のトレンド判定フィルタとして全戦略に適用"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-09"
+    name: "クロスセクショナル・モメンタム"
+    source: "Jegadeesh & Titman（学術）"
+    factor: "F3"
+    role: "signal"
+    status: "selected_primary"
+    phase: 2
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "F3の代表。相対順位のみで完結し、無料データで実装できる"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-10"
+    name: "RSレーティング"
+    source: "William O'Neil 派生"
+    factor: "F3"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "ST-09 と実質同一（期間加重の違いのみ）。ST-09 の順位算出方式として吸収する"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-11"
+    name: "高値更新追随"
+    source: "Livermore / Darvas の系譜"
+    factor: "F1"
+    role: "filter"
+    status: "filter"
+    phase: 2
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "単独運用せず、他戦略の候補プール生成に使う"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-12"
+    name: "短期RSI逆張り"
+    source: "Larry Connors（書籍）"
+    factor: "F4"
+    role: "signal"
+    status: "selected_primary"
+    phase: 2
+    timeframe: "デイ〜スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "F4の代表。上昇トレンド中の押し目のみを買うため、買い専用スコープと整合する"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-13"
+    name: "ボリンジャー%b / 連続陰線"
+    source: "一般的手法"
+    factor: "F4"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "デイ"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "ST-12 と相関が高い見込み。相関測定後に採否を判断"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-14"
+    name: "タートル・スープ / 80-20"
+    source: "Linda Raschke（書籍）"
+    factor: "F4"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "両方"
+    implementability: "A"
+    data_required: "分足"
+    note: "当日中のダマシ回復を取る手法でザラ場執行が必須"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-15"
+    name: "Holy Grail（20EMA押し目）"
+    source: "Linda Raschke（書籍）"
+    factor: "F1"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "両方"
+    implementability: "A"
+    data_required: "分足"
+    note: "ザラ場でのタッチ判定が必要"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-16"
+    name: "移動平均乖離率逆張り"
+    source: "BNF 氏（公開インタビュー）"
+    factor: "F4"
+    role: "signal"
+    status: "selected_secondary"
+    phase: 3
+    timeframe: "デイ〜スイング"
+    direction: "買い"
+    implementability: "B"
+    data_required: "日足"
+    note: "F4の第2代表候補。オシレーターではなく価格距離で測るため ST-12 と factor 内で分離できる可能性がある。相関確認が採用条件"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-17"
+    name: "小型株分散逆張り"
+    source: "株1000 氏（公開情報）"
+    factor: "F4"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "B"
+    data_required: "日足"
+    note: "S株の分散運用と相性は良いが、F4 は既に2本。相関測定後に ST-16 と入れ替え候補"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-18"
+    name: "順張り・損切り徹底"
+    source: "cis 氏（公開情報）"
+    factor: "F1"
+    role: "principle"
+    status: "principle"
+    phase: null
+    timeframe: "デイ"
+    direction: "買い"
+    implementability: "B"
+    data_required: "分足＋フロー"
+    note: "考え方（損小利大・逆張り否定）は RM 側の原則として採用。シグナルとしてはザラ場依存で実装不可"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-19"
+    name: "スキャルピング / 優位性の検証"
+    source: "テスタ氏（公開情報）"
+    factor: "F6"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "スキャル"
+    direction: "両方"
+    implementability: "B"
+    data_required: "板・歩み値"
+    note: "有料データとザラ場執行が必須。「全手法を実データで検証する」姿勢は VR 側の原則として採用"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-20"
+    name: "VWAP乖離・回帰"
+    source: "一般的手法"
+    factor: "F6"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "両方"
+    implementability: "A"
+    data_required: "分足"
+    note: "日中執行が前提"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-21"
+    name: "板インバランス / オーダーフロー"
+    source: "一般的手法"
+    factor: "F6"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "スキャル"
+    direction: "両方"
+    implementability: "B"
+    data_required: "板・歩み値"
+    note: "有料データが必須（NFR-061 に抵触）"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-22"
+    name: "テープリーディング型短期売買"
+    source: "Steve Cohen の運用スタイルとして語られる原則"
+    factor: "F6"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "両方"
+    implementability: "C"
+    data_required: "板・ニュース"
+    note: "裁量比重が高く、代替指標に置換できていない"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-23"
+    name: "決算後ドリフト（PEAD）"
+    source: "学術（Ball & Brown 以降）"
+    factor: "F5"
+    role: "signal"
+    status: "selected_primary"
+    phase: 3
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足＋決算"
+    note: "F5の代表。決算データの無料入手（Q-12）が着手条件"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-24"
+    name: "決算ギャップ・デイトレ"
+    source: "一般的手法"
+    factor: "F5"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "両方"
+    implementability: "A"
+    data_required: "分足"
+    note: "寄り後15分のレンジ判定が必要"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-25"
+    name: "材料株デイトレ"
+    source: "DUKE。氏ら（公開情報）"
+    factor: "F5"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "買い"
+    implementability: "B"
+    data_required: "開示リアルタイム"
+    note: "開示配信からの秒単位の反応が本体。半自動では原理的に間に合わない"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-26"
+    name: "需給イベント（指数入替・TOB等）"
+    source: "一般的手法"
+    factor: "F5"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "B"
+    data_required: "イベントカレンダー"
+    note: "イベントカレンダーの調達が課題"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-27"
+    name: "IPOセカンダリ"
+    source: "一般的手法"
+    factor: "F5"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ〜スイング"
+    direction: "両方"
+    implementability: "B"
+    data_required: "日足＋上場情報"
+    note: "値動きが荒く、S株の成行執行ではリスクが見積もれない"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-28"
+    name: "再帰性理論"
+    source: "George Soros（書籍）"
+    factor: "-"
+    role: "principle"
+    status: "principle"
+    phase: null
+    timeframe: "—"
+    direction: "—"
+    implementability: "C"
+    data_required: "—"
+    note: "レジーム判定の質的仮説として参照"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-29"
+    name: "集中投資と機動的撤退"
+    source: "Stanley Druckenmiller の原則として語られる考え方"
+    factor: "-"
+    role: "principle"
+    status: "principle"
+    phase: null
+    timeframe: "—"
+    direction: "—"
+    implementability: "C"
+    data_required: "—"
+    note: "確信度に応じたサイズ可変（DEC-032）として一部を実装"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-30"
+    name: "逆張りの破綻教訓"
+    source: "Victor Niederhoffer の事例"
+    factor: "-"
+    role: "principle"
+    status: "principle"
+    phase: null
+    timeframe: "—"
+    direction: "—"
+    implementability: "—"
+    data_required: "—"
+    note: "ナンピン禁止（RM-005）とレバレッジ上限（RM-014）の根拠"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-31"
+    name: "損切りの規律"
+    source: "Livermore / O'Neil 共通"
+    factor: "-"
+    role: "principle"
+    status: "principle"
+    phase: null
+    timeframe: "—"
+    direction: "—"
+    implementability: "—"
+    data_required: "—"
+    note: "RM-001 の根拠。全戦略への必須制約"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-32"
+    name: "ワイコフ理論"
+    source: "Richard Wyckoff（書籍）"
+    factor: "F2"
+    role: "filter"
+    status: "filter"
+    phase: 3
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "B"
+    data_required: "日足＋出来高"
+    note: "「出来高を伴わない上昇は弱い」を ST-04/ST-06 の確認フィルタとして使う"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-33"
+    name: "酒田五法"
+    source: "本間宗久（古典）"
+    factor: "-"
+    role: "filter"
+    status: "filter"
+    phase: 3
+    timeframe: "デイ〜スイング"
+    direction: "両方"
+    implementability: "A"
+    data_required: "日足"
+    note: "単独では優位性が薄い。エントリー日の足の形の確認に使う"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-34"
+    name: "ローソク足パターン"
+    source: "Steve Nison が体系化"
+    factor: "-"
+    role: "filter"
+    status: "filter"
+    phase: 3
+    timeframe: "デイ〜スイング"
+    direction: "両方"
+    implementability: "A"
+    data_required: "日足"
+    note: "ST-33 と同系。実体とヒゲの比率で定義し、同一の確認モジュールにまとめる"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-35"
+    name: "ステージ分析"
+    source: "Stan Weinstein（書籍）"
+    factor: "F1"
+    role: "signal"
+    status: "selected_secondary"
+    phase: 3
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "週足（30週線）"
+    note: "F1の第2代表。30週線ベースで ST-06（20/55日）と時間スケールが異なるため、同一因子内で分離できる見込み"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-36"
+    name: "一目均衡表"
+    source: "細田悟一／一目山人（古典）"
+    factor: "-"
+    role: "regime"
+    status: "regime_input"
+    phase: 3
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "雲との位置関係を個別銘柄のレジーム判定（DEC-013）に使う。日本株では参照者が多い"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-37"
+    name: "新値三本足・練行足・カギ足"
+    source: "古典（日本）"
+    factor: "-"
+    role: "filter"
+    status: "filter"
+    phase: 5
+    timeframe: "スイング"
+    direction: "両方"
+    implementability: "A"
+    data_required: "日足"
+    note: "ノイズ除去したトレンド判定。ST-06 と役割が重なるため優先度は低い"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-38"
+    name: "NR7 / オープニングレンジブレイク"
+    source: "Toby Crabel（書籍）"
+    factor: "F2"
+    role: "signal"
+    status: "selected_secondary"
+    phase: 3
+    timeframe: "デイ〜スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "F2の第2代表。**日足版（NR7判定→翌日始値で執行）ならS株の9:00執行枠で成立する**。ORB部分はスコープ外"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-39"
+    name: "ボラティリティブレイクアウト"
+    source: "Larry Williams（書籍）"
+    factor: "F2"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "両方"
+    implementability: "A"
+    data_required: "分足"
+    note: "始値±前日レンジ×係数の逆指値が前提。S株は逆指値が置けない"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-40"
+    name: "トリプルスクリーン"
+    source: "Alexander Elder（書籍）"
+    factor: "-"
+    role: "principle"
+    status: "principle"
+    phase: 2
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足＋週足"
+    note: "個別戦略ではなく**アンサンブル設計の骨格**として採用。DEC-023 の時間軸優先ルールの理論的裏づけ"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-41"
+    name: "短期売買の規律"
+    source: "Marty Schwartz（書籍）"
+    factor: "-"
+    role: "sizing"
+    status: "sizing"
+    phase: 3
+    timeframe: "デイ"
+    direction: "—"
+    implementability: "B"
+    data_required: "日足＋自己損益"
+    note: "「負けた翌日はサイズを落とす」を MM-06 に統合"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-42"
+    name: "トレンドフォローの徹底"
+    source: "Ed Seykota / Bruce Kovner / Michael Marcus（書籍）"
+    factor: "-"
+    role: "principle"
+    status: "principle"
+    phase: null
+    timeframe: "—"
+    direction: "—"
+    implementability: "—"
+    data_required: "—"
+    note: "エッジは執行と規律にある、という前提。RM/MM 側に反映"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-43"
+    name: "プライスアクション"
+    source: "Al Brooks / Joe Ross（書籍）"
+    factor: "F1"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "両方"
+    implementability: "C"
+    data_required: "分足"
+    note: "裁量比重が高く、定量化できていない"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-44"
+    name: "クラシカルチャートパターン"
+    source: "Edwards & Magee / Peter Brandt（書籍）"
+    factor: "F1"
+    role: "filter"
+    status: "filter"
+    phase: 5
+    timeframe: "スイング"
+    direction: "買い"
+    implementability: "B"
+    data_required: "日足"
+    note: "形状検出は ST-04 のベース判定と重複。統合して扱う"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-45"
+    name: "金融環境をレジームに使う"
+    source: "Martin Zweig（書籍）"
+    factor: "-"
+    role: "regime"
+    status: "regime_input"
+    phase: 3
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "金利・為替"
+    note: "政策金利・長短金利差・為替の変化率を DEC-010 の入力に加える"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-46"
+    name: "Wilder系指標（RSI/ADX/ATR/SAR）"
+    source: "J. Welles Wilder Jr.（書籍）"
+    factor: "-"
+    role: "filter"
+    status: "filter"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "日足"
+    note: "指標そのもの。ST-12・ST-15・MM-02 で使用中。出典として記録し、パラメータの由来を追跡可能にする"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-47"
+    name: "ボリンジャーバンド（スクイーズ）"
+    source: "John Bollinger（書籍）"
+    factor: "F2"
+    role: "signal"
+    status: "reserve"
+    phase: null
+    timeframe: "デイ〜スイング"
+    direction: "買い"
+    implementability: "A"
+    data_required: "日足"
+    note: "ST-04 の VCP と同一因子・同一概念。バンド幅の収縮判定を ST-04 の実装に吸収する"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "ST-48"
+    name: "小型新興株のデイトレード"
+    source: "片山晃／五月 氏（公開情報）"
+    factor: "F6"
+    role: "signal"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "デイ"
+    direction: "買い"
+    implementability: "C"
+    data_required: "分足＋板"
+    note: "流動性制約（RM-016）と正面から衝突。資金規模が小さい段階では実装しない"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-01"
+    name: "固定比率リスク"
+    source: "一般的手法"
+    factor: "-"
+    role: "sizing"
+    status: "sizing"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "自己損益"
+    note: "既定のサイズ決定方式（DEC-031）"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-02"
+    name: "ATRベース（Nユニット）"
+    source: "Richard Dennis（タートルズ）"
+    factor: "-"
+    role: "sizing"
+    status: "sizing"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "日足"
+    note: "ボラティリティ調整サイズ"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-03"
+    name: "分数ケリー"
+    source: "Kelly / Thorp 由来"
+    factor: "-"
+    role: "sizing"
+    status: "sizing"
+    phase: 3
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "自己損益"
+    note: "試行数が足りるまで無効。VR-047 の対象"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-04"
+    name: "ピラミッディング"
+    source: "Livermore ほか"
+    factor: "-"
+    role: "sizing"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "—"
+    note: "S株は同一日・同一銘柄で各執行タイミング1件のみ。分割買い増しができない"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-05"
+    name: "リスクパリティ / 相関調整"
+    source: "一般的手法"
+    factor: "-"
+    role: "sizing"
+    status: "sizing"
+    phase: 3
+    timeframe: "—"
+    direction: "—"
+    implementability: "B"
+    data_required: "日足"
+    note: "銘柄数が少ないため簡易版"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-06"
+    name: "資金曲線ベースのデレバレッジ"
+    source: "Marty Schwartz ほか"
+    factor: "-"
+    role: "sizing"
+    status: "sizing"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "自己損益"
+    note: "RM-022 と一体で実装"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-07"
+    name: "R倍数と期待値"
+    source: "Van K. Tharp（書籍）"
+    factor: "-"
+    role: "sizing"
+    status: "sizing"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "自己損益"
+    note: "本ツールが R 表記を採用している出典。PL-032 / VR-030 の基礎"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-08"
+    name: "オプティマル f"
+    source: "Ralph Vince（書籍）"
+    factor: "-"
+    role: "sizing"
+    status: "reserve"
+    phase: null
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "自己損益"
+    note: "MM-03 の代替。単独使用は破産確率が高い"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-09"
+    name: "ケリー基準"
+    source: "John Kelly / Ed Thorp"
+    factor: "-"
+    role: "sizing"
+    status: "sizing"
+    phase: 3
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "自己損益"
+    note: "MM-03 として実装済み。出典の明記"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MM-10"
+    name: "規律の外部化"
+    source: "Mark Douglas / Brett Steenbarger（書籍）"
+    factor: "-"
+    role: "principle"
+    status: "principle"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "—"
+    data_required: "—"
+    note: "本プロジェクトの存在理由。半自動では実行率（FR-318）として監視する"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MK-01"
+    name: "信用残・信用倍率・空売り比率"
+    source: "日本株の需給分析"
+    factor: "F6"
+    role: "filter"
+    status: "reserve"
+    phase: 5
+    timeframe: "スイング"
+    direction: "—"
+    implementability: "B"
+    data_required: "週次需給"
+    note: "無料入手の可否が課題"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MK-02"
+    name: "投資部門別売買動向"
+    source: "日本株の需給分析"
+    factor: "F6"
+    role: "regime"
+    status: "reserve"
+    phase: 5
+    timeframe: "—"
+    direction: "—"
+    implementability: "B"
+    data_required: "週次・遅行"
+    note: "遅行データのため優先度は低い"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MK-03"
+    name: "騰落レシオ・新高値/新安値銘柄数"
+    source: "市場ブレッドス"
+    factor: "-"
+    role: "regime"
+    status: "regime_input"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "日足"
+    note: "DEC-010 で使用中"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MK-04"
+    name: "裁定残高・先物需給"
+    source: "日本株の需給分析"
+    factor: "F6"
+    role: "regime"
+    status: "out_of_scope"
+    phase: null
+    timeframe: "—"
+    direction: "—"
+    implementability: "C"
+    data_required: "週次"
+    note: "初期スコープ外"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
+  - id: "MK-05"
+    name: "日経VI"
+    source: "予想変動率"
+    factor: "-"
+    role: "regime"
+    status: "regime_input"
+    phase: 2
+    timeframe: "—"
+    direction: "—"
+    implementability: "A"
+    data_required: "日次"
+    note: "高ボラ/低ボラ判定に使用中"
+    rules_written: false          # 条件式の書き下し（Phase 1）
+    backtested: false
