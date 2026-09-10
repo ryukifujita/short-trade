@@ -14,7 +14,7 @@
 pip install -r requirements.txt
 PYTHONPATH=src python -m short_trade setup       # ブラウザで認証情報を入力 → 接続確認〜基準線まで自動
 PYTHONPATH=src python -m short_trade selfcheck   # 仕様ファイルの検査（ネットワーク不要）
-python -m pytest tests/ -q                       # テスト 54件
+python -m pytest tests/ -q                       # テスト 58件
 ```
 
 実装の現況は [docs/20](docs/20_実装状況.md) を参照してください。実装は要求定義の合意後、`docs/10_ロードマップと段階スコープ.md` の

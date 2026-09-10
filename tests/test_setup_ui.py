@@ -42,7 +42,10 @@ class FakeClient:
     def listed_info(self, on=None):
         return pd.DataFrame({"Code": ["72030", "67580"], "CoName": ["A", "B"], "Mkt": ["0111", "0111"]})
 
-    def daily_quotes(self, *, code=None, on=None, start=None, end=None):
+    def coverage(self, *, probe_code="7203"):
+        return ("2016-01-04", None)
+
+    def daily_quotes(self, *, code=None, on=None, start=None, end=None, clamp=True):
         return _jq_frame()
 
     def cached_daily_quotes(self, code, *, start, end, refresh=False):
@@ -126,6 +129,7 @@ def test_full_pipeline_with_fake_client(sandbox):
     # レポートに U-1 / U-3 / 基準線が入り、認証情報は入っていない
     report = json.loads((root / "data" / "setup_report.json").read_text())
     assert report["U-1_earliest_date"] == "2016-01-04"
+    assert report["U-1_coverage_start"] == "2016-01-04"
     assert report["U-3_topix_available"] is False and "1306" in report["index_used"]
     assert report["U-5_earnings_date_available"] is True
     assert "slippage_0.0" in report["baseline"] and "slippage_0.1" in report["baseline"]
@@ -170,3 +174,73 @@ def test_to_earnings_map_normalises_five_digit_codes():
     raw = pd.DataFrame({"PubDate": ["2026-09-01"], "SchDate": ["2026-09-11"], "Code": ["72030"]})
     m = to_earnings_map(raw)
     assert list(m) == ["7203"] and m["7203"][0] == pd.Timestamp("2026-09-11")
+
+
+# ---- 契約範囲の自動検出（docs/19 U-1）----
+_COVERAGE_MSG = (
+    "株価の取得 が失敗しました: HTTPError: 400 for url: "
+    "https://api.jquants.com/v2/equities/bars/daily?code=7203&from=2008-01-01 "
+    "body: Your subscription covers the following dates: 2016-09-10 ~ . "
+    "If you want more data, please check other plans:https://jpx-jquants.com/#dataset"
+)
+
+
+def test_parse_coverage_reads_the_real_error_message():
+    from short_trade.jquants import parse_coverage
+    assert parse_coverage(_COVERAGE_MSG) == ("2016-09-10", None)
+    assert parse_coverage("subscription covers the following dates: 2021-01-04 ~ 2026-06-18 .") == (
+        "2021-01-04", "2026-06-18")
+    assert parse_coverage("まったく別のエラー") is None
+
+
+def test_daily_quotes_clamps_to_subscription_range():
+    """契約範囲外を要求したら、範囲内へ丸めて自動で取り直す。"""
+    from short_trade.jquants import Credentials, JQuantsClient
+
+    calls = []
+
+    class Inner:
+        def get_eq_bars_daily(self, code="", from_yyyymmdd="", to_yyyymmdd="", date_yyyymmdd=""):
+            calls.append(from_yyyymmdd)
+            if from_yyyymmdd and from_yyyymmdd < "2016-09-10":
+                raise RuntimeError(_COVERAGE_MSG)
+            return _jq_frame(n=5)
+
+    c = JQuantsClient(Credentials(api_key="k"))
+    c._client = Inner()
+    df = c.daily_quotes(code="7203", start="2008-01-01")
+    assert len(df) == 5
+    assert calls == ["2008-01-01", "2016-09-10"], calls
+    assert c._coverage == ("2016-09-10", None)
+
+
+def test_coverage_is_probed_once_and_cached():
+    from short_trade.jquants import Credentials, JQuantsClient
+
+    calls = []
+
+    class Inner:
+        def get_eq_bars_daily(self, code="", from_yyyymmdd="", to_yyyymmdd="", date_yyyymmdd=""):
+            calls.append(from_yyyymmdd)
+            if from_yyyymmdd < "2016-09-10":
+                raise RuntimeError(_COVERAGE_MSG)
+            return _jq_frame(n=3)
+
+    c = JQuantsClient(Credentials(api_key="k"))
+    c._client = Inner()
+    assert c.coverage() == ("2016-09-10", None)
+    assert c.coverage() == ("2016-09-10", None)
+    assert calls == ["1990-01-01"], "2回目は問い合わせ直さないこと"
+
+
+def test_unrelated_error_is_not_swallowed_by_clamp():
+    from short_trade.jquants import Credentials, JQuantsClient, JQuantsError
+
+    class Inner:
+        def get_eq_bars_daily(self, **kw):
+            raise RuntimeError("500 Internal Server Error")
+
+    c = JQuantsClient(Credentials(api_key="k"))
+    c._client = Inner()
+    with pytest.raises(JQuantsError, match="500"):
+        c.daily_quotes(code="7203", start="2008-01-01")

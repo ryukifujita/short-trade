@@ -89,8 +89,14 @@ def _pipeline(creds: dict[str, str]) -> None:
         report["listed_columns"] = list(map(str, info.columns))
         _log(f"上場銘柄一覧: {len(info)} 件")
 
-        _log("日足の遡れる期間を調べています（7203 を 2008年から）…")
-        raw = client.daily_quotes(code="7203", start="2008-01-01")
+        _log("契約が覆う期間を調べています…")
+        cov_start, cov_end = client.coverage()
+        report["U-1_coverage_start"] = cov_start
+        report["U-1_coverage_end"] = cov_end
+        _log(f"契約範囲: {cov_start} 〜 {cov_end or '最新'}")
+
+        _log("日足を取得できるか試しています（7203）…")
+        raw = client.daily_quotes(code="7203", start=cov_start)
         bars = to_bars(raw)
         report["daily_columns"] = list(map(str, raw.columns))
         report["U-1_earliest_date"] = str(bars.index.min().date()) if len(bars) else None
@@ -101,7 +107,7 @@ def _pipeline(creds: dict[str, str]) -> None:
         _log("TOPIX 指数が取れるか試しています…")
         topix = None
         try:
-            topix = client.topix(start="2015-01-01")
+            topix = client.topix(start=cov_start)
             report["U-3_topix_available"] = bool(len(topix))
         except Exception as e:  # 無料プランでは不可の可能性（docs/19 U-3）
             report["U-3_topix_available"] = False
@@ -132,12 +138,12 @@ def _pipeline(creds: dict[str, str]) -> None:
             df = to_index(topix)
             report["index_used"] = "TOPIX"
         else:
-            df = to_bars(client.daily_quotes(code="1306", start="2008-01-01"))[["close"]]
+            df = to_bars(client.daily_quotes(code="1306", start=cov_start))[["close"]]
             report["index_used"] = "1306（TOPIX連動ETFで代用）"
         df.sort_index().to_parquet(index_out)
         _log(f"指数（{report['index_used']}）を保存しました: {len(df)} 本")
 
-        start = report["U-1_earliest_date"] or "2015-01-01"
+        start = report["U-1_coverage_start"] or report["U-1_earliest_date"] or "2016-01-01"
         got = 0
         for i, code in enumerate(SEED_CODES, 1):
             try:
@@ -240,6 +246,7 @@ def _result_html(report: dict) -> str:
         return '<span class="ok">取得できる</span>' if v else '<span class="ng">取得できない</span>'
     rows = [
         ("上場銘柄一覧", f"{report.get('listed_count')} 件"),
+        ("契約が覆う期間", f"{report.get('U-1_coverage_start')} 〜 {report.get('U-1_coverage_end') or '最新'}"),
         ("U-1 日足の最古日", f"{report.get('U-1_earliest_date')}（約 {report.get('U-1_years')} 年）"),
         ("U-1 日足の最新日", f"{report.get('U-1_latest_date')}（無料プランは12週遅延）"),
         ("U-3 TOPIX 指数", yn(report.get("U-3_topix_available")) + f" → 使用: {report.get('index_used')}"),

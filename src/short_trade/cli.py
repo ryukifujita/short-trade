@@ -86,15 +86,16 @@ def cmd_fetch(args) -> int:
         out = ROOT / "data" / "jquants" / "index.parquet"
         out.parent.mkdir(parents=True, exist_ok=True)
         if args.index.lower() == "topix":
-            raw = client.topix(start=args.start, end=args.end)
+            raw = client.topix(start=start, end=args.end)
             if raw is None or raw.empty:
                 raise SystemExit("TOPIX が取得できませんでした（プランにより不可。--index 1306 を試してください）")
             df = to_index(raw)
         else:
-            df = to_bars(client.daily_quotes(code=args.index, start=args.start, end=args.end))[["close"]]
+            df = to_bars(client.daily_quotes(code=args.index, start=start, end=args.end))[["close"]]
         df.sort_index().to_parquet(out)
         print(f"指数（{args.index}）{len(df)} 本を {out} に保存しました")
         return 0
+    start = args.start or client.coverage()[0]
     codes = [c.strip() for c in args.codes.split(",")] if args.codes else []
     if not codes:
         info = client.listed_info()
@@ -105,8 +106,7 @@ def cmd_fetch(args) -> int:
         return 0
 
     for code in codes:
-        raw = client.cached_daily_quotes(code, start=args.start, end=args.end,
-                                         refresh=args.refresh)
+        raw = client.cached_daily_quotes(code, start=start, end=args.end, refresh=args.refresh)
         bars = to_bars(raw)
         print(f"{code}: {len(bars)} 本  {bars.index.min()} 〜 {bars.index.max()}"
               if len(bars) else f"{code}: データなし")
@@ -170,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     f = sub.add_parser("fetch", help="J-Quants からデータを取得")
     f.add_argument("--codes", help="カンマ区切りの銘柄コード。省略すると上場銘柄一覧を取得")
     f.add_argument("--index", help="指数を取得して index.parquet に保存。'topix' または代用ETFのコード（例: 1306）")
-    f.add_argument("--start", default="2015-01-01")
+    f.add_argument("--start", default=None, help="省略すると契約が覆う最古日から取得します")
     f.add_argument("--end", default=None)
     f.add_argument("--refresh", action="store_true")
     f.set_defaults(func=cmd_fetch)

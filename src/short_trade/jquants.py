@@ -15,6 +15,7 @@ v2 ではダッシュボードで発行した **APIキーを `x-api-key` ヘッ�
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -27,6 +28,21 @@ DEFAULT_CACHE = Path(__file__).resolve().parents[2] / "data" / "jquants"
 
 class JQuantsError(RuntimeError):
     pass
+
+
+# 契約範囲外の日付を要求したときに API が返すメッセージ。
+#   "Your subscription covers the following dates: 2016-09-10 ~ ."
+# 契約プランごとに遡れる期間が違うため、範囲は決め打ちせずここから読み取る（docs/19 U-1）。
+_COVERAGE_RE = re.compile(
+    r"subscription covers the following dates:\s*"
+    r"(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})?"
+)
+
+
+def parse_coverage(message: str) -> tuple[str, str | None] | None:
+    """エラーメッセージから契約が覆う日付範囲を取り出す。読めなければ None。"""
+    m = _COVERAGE_RE.search(message)
+    return (m.group(1), m.group(2)) if m else None
 
 
 def _load_dotenv(path: Path | None = None) -> None:
@@ -69,6 +85,7 @@ class JQuantsClient:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._client: Any | None = None
+        self._coverage: tuple[str, str | None] | None = None
 
     @property
     def client(self) -> Any:
@@ -97,15 +114,50 @@ class JQuantsClient:
         """
         return self._call("上場銘柄一覧の取得", self.client.get_list, date_yyyymmdd=_ymd(on))
 
+    def coverage(self, *, probe_code: str = "7203") -> tuple[str, str | None]:
+        """契約が覆う日付範囲 (開始日, 終了日) を確定する。
+
+        プランごとに遡れる期間が違い、事前に知る方法がない。
+        わざと古い日付を要求し、返ってくるエラーメッセージから読み取る。
+        範囲内だった場合はその日付を開始日として扱う。
+        """
+        if self._coverage is not None:
+            return self._coverage
+        probe = "1990-01-01"
+        try:
+            self.daily_quotes(code=probe_code, start=probe, end="1990-01-31", clamp=False)
+            self._coverage = (probe, None)
+        except JQuantsError as e:
+            found = parse_coverage(str(e))
+            if found is None:
+                raise
+            self._coverage = found
+        return self._coverage
+
     def daily_quotes(self, *, code: str | None = None, on: date | str | None = None,
-                     start: date | str | None = None,
-                     end: date | str | None = None) -> pd.DataFrame:
-        """株価四本値（v2: /equities/bars/daily）。"""
-        return self._call(
-            "株価の取得", self.client.get_eq_bars_daily,
-            code=code or "", from_yyyymmdd=_ymd(start), to_yyyymmdd=_ymd(end),
-            date_yyyymmdd=_ymd(on),
-        )
+                     start: date | str | None = None, end: date | str | None = None,
+                     clamp: bool = True) -> pd.DataFrame:
+        """株価四本値（v2: /equities/bars/daily）。
+
+        clamp=True なら、契約範囲外の日付を要求したときに範囲内へ丸めて取り直す。
+        """
+        try:
+            return self._call(
+                "株価の取得", self.client.get_eq_bars_daily,
+                code=code or "", from_yyyymmdd=_ymd(start), to_yyyymmdd=_ymd(end),
+                date_yyyymmdd=_ymd(on),
+            )
+        except JQuantsError as e:
+            found = parse_coverage(str(e)) if clamp else None
+            if found is None:
+                raise
+            self._coverage = found
+            cov_start, cov_end = found
+            return self._call(
+                "株価の取得（契約範囲に丸めて再試行）", self.client.get_eq_bars_daily,
+                code=code or "", from_yyyymmdd=cov_start,
+                to_yyyymmdd=_ymd(end) or (cov_end or ""), date_yyyymmdd=_ymd(on),
+            )
 
     def topix(self, *, start=None, end=None) -> pd.DataFrame:
         """TOPIX 四本値（v2: /indices/bars/daily/topix）。
