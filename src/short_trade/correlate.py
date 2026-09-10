@@ -66,10 +66,15 @@ def measure(specs: list[StrategySpec], data: dict[str, pd.DataFrame], *,
     skipped: dict[str, str] = {}
     for spec in specs:
         try:
+            # 成績ではなく「どの日にどの銘柄を買うか」の構造を見るため、
+            # 資金・同時保有数・日次損失上限・DD縮小といった資金側の制約を外す。
+            # 戦略仕様に固有の上限（ST-09 の max_positions=5）は戦略の一部なので残す。
             res = run(spec, data, index=index,
                       config=BacktestConfig.from_common(spec.common, initial_equity=equity,
                                                         slippage_pct=0.0, earnings_dates=earnings,
-                                                        max_position_pct=100.0, max_portfolio_heat_pct=100.0))
+                                                        max_position_pct=100.0, max_portfolio_heat_pct=100.0,
+                                                        max_positions=10_000, daily_loss_limit_pct=None,
+                                                        drawdown_derisk=[]))
         except UnsupportedSpec as e:
             skipped[spec.id] = str(e)
             continue

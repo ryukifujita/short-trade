@@ -114,10 +114,10 @@ def cmd_fetch(args) -> int:
     from .jquants import JQuantsClient, to_bars, to_index
 
     client = JQuantsClient()
+    start = args.start or client.coverage()[0]      # 省略時は契約が覆う最古日から
     if args.universe:
         import json as _json
 
-        start = client.coverage()[0]
         info = client.listed_info()
         latest = client.daily_quotes(code="7203", start=None, end=None).tail(1)
         if latest.empty:
@@ -154,7 +154,6 @@ def cmd_fetch(args) -> int:
         print(f"完了: {ok} 銘柄。universe.json に選定結果を保存しました")
         return 0
     if args.earnings:
-        start = client.coverage()[0]
         print(f"決算発表予定日を {start} から取得します。日ごとの問い合わせになるため数分〜十数分かかります…")
         df = client.earnings_dates(start=start, end=None)
         if df is None or df.empty:
@@ -176,7 +175,6 @@ def cmd_fetch(args) -> int:
         df.sort_index().to_parquet(out)
         print(f"指数（{args.index}）{len(df)} 本を {out} に保存しました")
         return 0
-    start = args.start or client.coverage()[0]
     codes = [c.strip() for c in args.codes.split(",")] if args.codes else []
     if not codes:
         info = client.listed_info()

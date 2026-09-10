@@ -75,3 +75,28 @@ def test_compare_applies_earnings_when_present(cache):
     cli.cmd_compare(args)
     report = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())
     assert report["earnings_applied"] is True
+
+
+def test_fetch_index_path_defines_start(monkeypatch, tmp_path):
+    """`fetch --index` で start が未定義になる不具合の回帰テスト。"""
+    from short_trade import cli as _cli
+
+    calls = {}
+
+    class Fake:
+        def coverage(self):
+            return ("2016-09-10", None)
+
+        def topix(self, *, start=None, end=None):
+            calls["start"] = start
+            return pd.DataFrame({"Date": ["2024-01-04", "2024-01-05"], "O": [1, 1], "H": [1, 1], "L": [1, 1], "C": [1000.0, 1001.0]})
+
+    import short_trade.jquants as jq
+    monkeypatch.setattr(jq, "JQuantsClient", lambda *a, **k: Fake())
+    monkeypatch.setattr(_cli, "ROOT", tmp_path)
+    monkeypatch.setattr(_cli, "DATA", tmp_path / "data" / "jquants")
+    args = Namespace(index="topix", start=None, end=None, codes=None, refresh=False,
+                     earnings=False, universe=False, market="", top=10)
+    assert _cli.cmd_fetch(args) == 0
+    assert calls["start"] == "2016-09-10"
+    assert (tmp_path / "data" / "jquants" / "index.parquet").exists()

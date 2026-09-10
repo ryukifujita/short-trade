@@ -30,8 +30,9 @@ entry:
     - "vcp.p1 > vcp.p2 > vcp.p3"
     - "vcp.p3 <= 10.0"                                   # 最後の押しは10%以内
     - "vcp.v1 > vcp.v2 > vcp.v3"                         # 各押しの平均出来高が段階的に減少
-    # --- ブレイク ---
+    # --- ブレイク（前日はピボット以下、当日に上抜け＝クロスした日だけ） ---
     - "close > vcp.pivot"
+    - "close[-1] <= vcp.pivot[-1]"                       # これが無いと上抜け後ずっと条件が真のままになる
     - "volume >= SMA(volume, 20) * 1.5"
   rank: {by: "return_126d", order: desc}                          # 相対強度の高い順
 

@@ -68,3 +68,23 @@ def test_st04_does_not_enter_without_volume_confirmation():
     res = run(ST04, {"T": bars}, index=idx,
               config=BacktestConfig(initial_equity=1_000_000, slippage_pct=0.0, hysteresis_days=1))
     assert not [t for t in res.trades if t.entry_date == bars.index[bpos + 1]]
+
+
+def test_st04_entry_condition_fires_only_on_the_cross_day():
+    """上抜けの翌日以降も条件が真のままだと、手仕舞い後に基底から離れた所で再建てしてしまう。"""
+    from short_trade.backtest import _align, _eval_or_unsupported, _rewrite_xrank
+    from short_trade.detectors import DETECTORS
+    from short_trade.indicators import _Frame, build_namespace
+
+    bars, bpos = vcp_pattern()
+    idx = rising_index(len(bars), start=str(bars.index[0].date()))
+    ns = build_namespace(bars, index=idx)
+    ns["vcp"] = _Frame(DETECTORS["vcp"](bars, lookback=90, atr_period=20, atr_mult=1.5))
+    ns["return_126d"] = _eval_or_unsupported("ST-04", "定義", "close / close[-126] - 1", ns)
+    ns["__XRANK_return_126d"] = pd.Series(100.0, index=bars.index)   # 単一銘柄なので最上位扱い
+    mask = pd.Series(True, index=bars.index)
+    for cond in ST04.entry_conditions:
+        mask &= _align(_eval_or_unsupported("ST-04", "条件", _rewrite_xrank(cond), ns), bars.index)
+    after = mask.iloc[bpos:]
+    assert bool(after.iloc[0]), "ブレイク日に条件が成立していない"
+    assert after.iloc[1:].sum() == 0, f"ブレイク後にも {int(after.iloc[1:].sum())} 日で条件が真のまま"
