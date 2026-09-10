@@ -1,0 +1,111 @@
+{
+  "checked_at": "2026-09-10T23:43:36",
+  "unverified": {},
+  "listed_count": 4444,
+  "listed_columns": [
+    "Date",
+    "Code",
+    "CoName",
+    "CoNameEn",
+    "S17",
+    "S17Nm",
+    "S33",
+    "S33Nm",
+    "ScaleCat",
+    "Mkt",
+    "MktNm",
+    "Mrgn",
+    "MrgnNm",
+    "ProdCat",
+    "S17NmEn",
+    "S33NmEn",
+    "MktNmEn"
+  ],
+  "U-1_coverage_start": "2016-09-10",
+  "U-1_coverage_end": null,
+  "daily_columns": [
+    "Date",
+    "Code",
+    "O",
+    "H",
+    "L",
+    "C",
+    "UL",
+    "LL",
+    "Vo",
+    "Va",
+    "AdjFactor",
+    "AdjO",
+    "AdjH",
+    "AdjL",
+    "AdjC",
+    "AdjVo",
+    "MktCap",
+    "ExRT"
+  ],
+  "U-1_earliest_date": "2016-09-12",
+  "U-1_latest_date": "2026-09-10",
+  "U-1_years": 10.0,
+  "U-3_topix_available": true,
+  "U-5_earnings_date_available": true,
+  "U-5_rows": 398,
+  "U-5_columns": [
+    "PubDate",
+    "SchDate",
+    "FQName",
+    "FYE",
+    "Code",
+    "CoName",
+    "CoNameEn"
+  ],
+  "index_used": "TOPIX",
+  "fetched_symbols": 30,
+  "baseline": {
+    "slippage_0.0": {
+      "取引数": 379,
+      "強制手仕舞い": 5,
+      "勝率": 39.314,
+      "総損益": 18589.0,
+      "平均利益": 287.003,
+      "平均損失": -110.084,
+      "プロフィットファクタ": 1.689,
+      "平均R": 0.252,
+      "期待値": 46.026,
+      "平均保有日数": 20.335,
+      "最大DD": -8.492,
+      "最大連敗": 22,
+      "rejections": {
+        "サイズが1株未満（リスク予算に対して株価が高すぎる）": 1216,
+        "同時保有数の上限": 654,
+        "約定価格ではサイズが1株未満": 22,
+        "ポートフォリオ・ヒートの上限": 5
+      },
+      "warnings": [
+        "決算日データが無いため、決算跨ぎ禁止（RM-001d）は適用されていません"
+      ]
+    },
+    "slippage_0.1": {
+      "取引数": 364,
+      "強制手仕舞い": 4,
+      "勝率": 38.736,
+      "総損益": 13447.842,
+      "平均利益": 262.274,
+      "平均損失": -109.984,
+      "プロフィットファクタ": 1.508,
+      "平均R": 0.2,
+      "期待値": 34.215,
+      "平均保有日数": 19.75,
+      "最大DD": -9.134,
+      "最大連敗": 27,
+      "rejections": {
+        "サイズが1株未満（リスク予算に対して株価が高すぎる）": 1316,
+        "同時保有数の上限": 599,
+        "約定価格ではサイズが1株未満": 25,
+        "ポートフォリオ・ヒートの上限": 7
+      },
+      "warnings": [
+        "決算日データが無いため、決算跨ぎ禁止（RM-001d）は適用されていません"
+      ]
+    }
+  }
+}

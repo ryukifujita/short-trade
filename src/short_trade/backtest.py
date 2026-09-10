@@ -202,6 +202,7 @@ class BacktestConfig:
     drawdown_derisk: list[tuple[float, float]] = field(default_factory=list)   # RM-022 [(dd%, 倍率)]
     min_avg_turnover_20d: float = 0.0                              # ユニバース: 20日平均売買代金
     min_listed_days: int = 0                                       # ユニバース: 上場後の営業日数
+    risk_pct_override: float | None = None                         # None なら戦略仕様の risk_pct を使う
 
     @classmethod
     def from_common(cls, common: dict[str, Any], **overrides: Any) -> "BacktestConfig":
@@ -605,7 +606,8 @@ def run(
                 reject("同時保有数の上限")
                 continue
             risk_per_share = (close - stop_price) * cfg.assumed_loss_multiple
-            budget = equity * spec.risk_pct / 100 * size_mult
+            risk_pct = spec.risk_pct if cfg.risk_pct_override is None else cfg.risk_pct_override
+            budget = equity * risk_pct / 100 * size_mult
             value_cap = equity * cfg.max_position_pct / 100 * size_mult
             shares = min(int(math.floor(budget / risk_per_share)), int(math.floor(value_cap / close)))
             if shares < 1:

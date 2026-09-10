@@ -5,6 +5,8 @@
   python -m short_trade smoke --strategy ST-06    合成データで基盤の健全性を確認（ネットワーク不要）
   python -m short_trade fetch  --start 2015-01-01 --end 2025-12-31 --codes 7203,6758
   python -m short_trade backtest --strategy ST-06 --start 2015-01-01 --end 2025-12-31
+  python -m short_trade fetch --earnings           決算発表予定日を契約範囲ぶん取得（決算跨ぎ禁止に使う）
+  python -m short_trade compare                    キャッシュからリスク率×スリッページの比較表を出す
 """
 from __future__ import annotations
 
@@ -15,10 +17,38 @@ from pathlib import Path
 import pandas as pd
 
 from .backtest import BacktestConfig, UnsupportedSpec, run
+
+DATA = None  # ROOT 定義後に設定
 from .spec import assert_selected, load_all, load_common
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "catalog"
+DATA = ROOT / "data" / "jquants"
+EARNINGS_PATH = DATA / "earnings.parquet"
+
+
+def _load_cache(start=None, end=None, min_bars: int = 250):
+    """キャッシュ済みの日足・指数・決算日を読む。backtest / compare 共通。"""
+    from .jquants import to_bars, to_earnings_map
+
+    files = sorted((DATA / "daily").glob("*.parquet"))
+    if not files:
+        raise SystemExit("キャッシュがありません。先に setup（または fetch）を実行してください")
+    data, skipped = {}, 0
+    for f in files:
+        bars = to_bars(pd.read_parquet(f))
+        if start:
+            bars = bars.loc[start:]
+        if end:
+            bars = bars.loc[:end]
+        if len(bars) > min_bars:
+            data[f.stem] = bars
+        else:
+            skipped += 1
+    index_path = DATA / "index.parquet"
+    index = pd.read_parquet(index_path) if index_path.exists() else None
+    earnings = to_earnings_map(pd.read_parquet(EARNINGS_PATH)) if EARNINGS_PATH.exists() else None
+    return data, index, earnings, skipped
 
 
 def _specs(strategy_id: str | None = None):
@@ -82,6 +112,16 @@ def cmd_fetch(args) -> int:
     from .jquants import JQuantsClient, to_bars, to_index
 
     client = JQuantsClient()
+    if args.earnings:
+        start = client.coverage()[0]
+        print(f"決算発表予定日を {start} から取得します。日ごとの問い合わせになるため数分〜十数分かかります…")
+        df = client.earnings_dates(start=start, end=None)
+        if df is None or df.empty:
+            raise SystemExit("決算発表予定日が取得できませんでした")
+        EARNINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(EARNINGS_PATH)
+        print(f"決算発表予定日 {len(df)} 件を {EARNINGS_PATH} に保存しました")
+        return 0
     if args.index:
         out = ROOT / "data" / "jquants" / "index.parquet"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -114,41 +154,81 @@ def cmd_fetch(args) -> int:
 
 
 def cmd_backtest(args) -> int:
-    from .jquants import to_bars
-
-    cache = ROOT / "data" / "jquants" / "daily"
-    files = sorted(cache.glob("*.parquet"))
-    if not files:
-        raise SystemExit(
-            "キャッシュがありません。先に `python -m short_trade fetch` を実行してください"
-        )
-    data = {}
-    for f in files:
-        bars = to_bars(pd.read_parquet(f))
-        if args.start:
-            bars = bars.loc[args.start:]
-        if args.end:
-            bars = bars.loc[:args.end]
-        if len(bars) > 250:
-            data[f.stem] = bars
-    index_path = ROOT / "data" / "jquants" / "index.parquet"
-    index = pd.read_parquet(index_path) if index_path.exists() else None
+    data, index, earnings, skipped = _load_cache(args.start, args.end)
     if index is None:
         print("警告: 指数データがありません。レジームフィルタが評価できません（docs/19 §19.4 の代用案を参照）")
+    if earnings is None:
+        print("注意: 決算日データがありません。`fetch --earnings` を実行すると決算跨ぎ禁止（RM-001d）が有効になります")
+    if skipped:
+        print(f"注意: 履歴が短い {skipped} 銘柄を除外しました")
 
     for spec in _specs(args.strategy):
-        overrides = {"initial_equity": args.equity}
+        overrides = {"initial_equity": args.equity, "earnings_dates": earnings}
         if args.slippage is not None:
             overrides["slippage_pct"] = args.slippage
-        res = run(spec, data, index=index,
-                  config=BacktestConfig.from_common(spec.common, **overrides))
+        if args.risk_pct is not None:
+            overrides["risk_pct_override"] = args.risk_pct
         print(f"\n=== {spec.id} {spec.name} ===")
+        try:
+            res = run(spec, data, index=index,
+                      config=BacktestConfig.from_common(spec.common, **overrides))
+        except UnsupportedSpec as e:
+            print(f"  未実装: {e}")
+            continue
         for k, v in res.metrics().items():
             print(f"  {k:20} {v:>12.2f}" if isinstance(v, float) else f"  {k:20} {v:>12}")
         if res.rejections:
             print("  却下:", res.rejections)
         for w in res.warnings[:5]:
             print("  警告:", w)
+    return 0
+
+
+def cmd_compare(args) -> int:
+    """キャッシュ済みデータで、リスク率 × スリッページの組合せを一覧にする。
+
+    5万円ではリスク率1%だとシグナルの大半が「1株未満」で捨てられる（docs/24）。
+    1% と 2% を並べて、取引数と最大DDのトレードオフを見て決めるための表。
+    """
+    import json
+
+    data, index, earnings, skipped = _load_cache(args.start, args.end)
+    if index is None:
+        raise SystemExit("指数データがありません。setup を先に実行してください")
+    risk_levels = [float(x) for x in args.risk.split(",")]
+    slips = [float(x) for x in args.slippage_levels.split(",")]
+    report: dict = {"equity": args.equity, "symbols": len(data), "skipped": skipped,
+                    "earnings_applied": earnings is not None, "results": {}}
+    print(f"銘柄 {len(data)} / 資金 {args.equity:,.0f}円 / 決算跨ぎ禁止: {'有効' if earnings else '無効（fetch --earnings で有効化）'}")
+    for spec in _specs(args.strategy):
+        rows = []
+        print(f"\n=== {spec.id} {spec.name} ===")
+        print(f"  {'リスク%':>6} {'滑り%':>5} {'取引':>5} {'勝率':>6} {'PF':>6} {'平均R':>6} {'最大DD':>7} {'連敗':>4} {'総損益':>9}  1株未満で却下")
+        for r in risk_levels:
+            for sl in slips:
+                cfg = BacktestConfig.from_common(spec.common, initial_equity=args.equity,
+                                                 slippage_pct=sl, risk_pct_override=r,
+                                                 earnings_dates=earnings)
+                try:
+                    res = run(spec, data, index=index, config=cfg)
+                except UnsupportedSpec as e:
+                    print(f"  未実装: {e}")
+                    rows = None
+                    break
+                m = res.metrics()
+                too_small = sum(v for k, v in res.rejections.items() if "1株未満" in k)
+                row = {"risk_pct": r, "slippage_pct": sl, **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()},
+                       "rejected_too_small": too_small, "rejections": res.rejections}
+                rows.append(row)
+                print(f"  {r:>6.1f} {sl:>5.2f} {m.get('取引数', 0):>5} {m.get('勝率', 0):>5.1f}% {m.get('プロフィットファクタ', 0):>6.2f} "
+                      f"{m.get('平均R', 0):>6.2f} {m.get('最大DD', 0):>6.1f}% {m.get('最大連敗', 0):>4} {m.get('総損益', 0):>9,.0f}  {too_small}")
+            if rows is None:
+                break
+        if rows:
+            report["results"][spec.id] = rows
+    out = ROOT / "data" / "compare_report.json"
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n比較表を {out.relative_to(ROOT)} に書き出しました。この内容を報告してください（認証情報は含まれません）")
     return 0
 
 
@@ -170,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     f = sub.add_parser("fetch", help="J-Quants からデータを取得")
     f.add_argument("--codes", help="カンマ区切りの銘柄コード。省略すると上場銘柄一覧を取得")
     f.add_argument("--index", help="指数を取得して index.parquet に保存。'topix' または代用ETFのコード（例: 1306）")
+    f.add_argument("--earnings", action="store_true", help="決算発表予定日を契約範囲ぶん取得して earnings.parquet に保存")
     f.add_argument("--start", default=None, help="省略すると契約が覆う最古日から取得します")
     f.add_argument("--end", default=None)
     f.add_argument("--refresh", action="store_true")
@@ -182,6 +263,16 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--equity", type=float, default=50_000)
     b.add_argument("--slippage", type=float, default=None,
                    help="片道スリッページ%%。VR-016: 0（楽観）と 0.1（保守）の両方で実行して比較する")
+    b.add_argument("--risk-pct", type=float, default=None, help="1トレードのリスク率%%（仕様の値を上書き）")
+
+    c = sub.add_parser("compare", help="キャッシュからリスク率×スリッページの比較表を出す")
+    c.add_argument("--strategy", default="ST-06")
+    c.add_argument("--risk", default="1.0,2.0", help="カンマ区切りのリスク率%%")
+    c.add_argument("--slippage-levels", default="0.0,0.1", help="カンマ区切りの片道スリッページ%%")
+    c.add_argument("--equity", type=float, default=50_000)
+    c.add_argument("--start", default=None)
+    c.add_argument("--end", default=None)
+    c.set_defaults(func=cmd_compare)
     b.set_defaults(func=cmd_backtest)
 
     args = p.parse_args(argv)
