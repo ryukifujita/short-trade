@@ -17,3 +17,7 @@ __pycache__/
 .venv/
 node_modules/
 .DS_Store
+
+# 仮想環境
+.venv/
+venv/
