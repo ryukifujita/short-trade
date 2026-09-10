@@ -1,0 +1,901 @@
+<title>short-trade 画面設計案</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+  :root{
+    --ground:#F4F7F7; --surface:#FFFFFF; --surface-2:#EDF2F2;
+    --ink:#101A1C; --ink-2:#33474B; --muted:#5C6E72; --faint:#8A9BA0;
+    --line:#D9E2E3; --line-strong:#BCCBCD;
+    --accent:#0E6E6E; --accent-ink:#0A5252; --accent-soft:#E0EFEE;
+    --up:#C43D2E; --up-soft:#FBE9E6;
+    --down:#1F5FA8; --down-soft:#E7EFF8;
+    --warn:#9A6510; --warn-soft:#FBF0DC;
+    --shadow:0 1px 2px rgba(16,26,28,.06), 0 8px 24px -12px rgba(16,26,28,.18);
+    --mono:"IBM Plex Mono","SFMono-Regular",Menlo,Consolas,monospace;
+    --sans:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic UI",system-ui,sans-serif;
+    --serif:"Zen Old Mincho","Hiragino Mincho ProN","Yu Mincho",serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1315; --surface:#151E20; --surface-2:#1D282A;
+      --ink:#E7EEEF; --ink-2:#BFCFD1; --muted:#93A6A9; --faint:#6E8286;
+      --line:#2A3739; --line-strong:#3C4C4E;
+      --accent:#4FB3AC; --accent-ink:#7FCCC6; --accent-soft:#12302E;
+      --up:#E8705F; --up-soft:#2E1A17;
+      --down:#6BA5E0; --down-soft:#15222F;
+      --warn:#D9A64B; --warn-soft:#2C2312;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1315; --surface:#151E20; --surface-2:#1D282A;
+    --ink:#E7EEEF; --ink-2:#BFCFD1; --muted:#93A6A9; --faint:#6E8286;
+    --line:#2A3739; --line-strong:#3C4C4E;
+    --accent:#4FB3AC; --accent-ink:#7FCCC6; --accent-soft:#12302E;
+    --up:#E8705F; --up-soft:#2E1A17;
+    --down:#6BA5E0; --down-soft:#15222F;
+    --warn:#D9A64B; --warn-soft:#2C2312;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.75;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding-inline:20px; padding-block:0}
+  h1,h2,h3,h4{text-wrap:balance; margin:0}
+  a{color:var(--accent-ink)}
+  code{font-family:var(--mono); font-size:.88em}
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums}
+
+  /* ---------- masthead ---------- */
+  .mast{padding-block:56px 40px; border-bottom:1px solid var(--line)}
+  .eyebrow{
+    font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--accent-ink); font-weight:700; margin-bottom:14px;
+  }
+  .mast h1{
+    font-family:var(--serif); font-weight:600; letter-spacing:.02em;
+    font-size:clamp(28px,5.4vw,46px); line-height:1.3; margin-bottom:16px;
+  }
+  .lede{max-width:60ch; color:var(--ink-2); font-size:16px}
+  .meta{
+    display:flex; flex-wrap:wrap; gap:8px; margin-top:24px;
+  }
+  .chip{
+    font-size:12px; padding:5px 11px; border-radius:999px;
+    border:1px solid var(--line-strong); color:var(--ink-2); background:var(--surface);
+  }
+  .chip b{font-weight:700; color:var(--ink)}
+
+  /* ---------- flow strip ---------- */
+  .flow{
+    margin-top:32px; display:grid; gap:2px;
+    grid-template-columns:repeat(auto-fit,minmax(128px,1fr));
+    border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--line);
+  }
+  .flow div{background:var(--surface); padding:12px 14px}
+  .flow span{
+    display:block; font-family:var(--mono); font-size:11px; color:var(--accent-ink); font-weight:600;
+  }
+  .flow strong{display:block; font-size:13px; font-weight:500; line-height:1.5; margin-top:3px}
+  .flow .byuser{background:var(--accent-soft)}
+
+  .legend{
+    margin-top:20px; display:flex; flex-wrap:wrap; gap:18px;
+    font-size:12.5px; color:var(--muted); align-items:center;
+  }
+  .swatch{display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:6px}
+
+  /* ---------- sections ---------- */
+  .step{padding-block:52px; border-bottom:1px solid var(--line)}
+  .step-head{display:flex; gap:16px; align-items:baseline; margin-bottom:8px}
+  .step-no{
+    font-family:var(--mono); font-size:13px; font-weight:600;
+    color:var(--surface); background:var(--accent);
+    min-width:30px; height:30px; padding-inline:9px; flex:none; border-radius:15px;
+    display:grid; place-items:center; align-self:center; letter-spacing:.04em;
+  }
+  .step h2{font-size:clamp(19px,3vw,24px); font-weight:700; letter-spacing:.01em}
+  .step-sub{color:var(--muted); font-size:13.5px; margin-left:46px; margin-bottom:26px}
+  .step-sub .dev{
+    font-family:var(--mono); font-size:11px; letter-spacing:.06em;
+    border:1px solid var(--line-strong); border-radius:4px; padding:2px 6px; margin-right:8px; color:var(--ink-2);
+  }
+
+  .pair{display:grid; gap:32px; align-items:start; grid-template-columns:1fr}
+  @media(min-width:900px){
+    .pair{grid-template-columns:minmax(0,392px) minmax(0,1fr); gap:44px}
+    .pair.wide{grid-template-columns:minmax(0,1fr)}
+  }
+
+  /* ---------- annotations ---------- */
+  .notes{list-style:none; margin:0; padding:0; display:grid; gap:2px;
+    border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--line)}
+  .notes li{background:var(--surface); padding:13px 16px; display:grid; grid-template-columns:26px 1fr; gap:12px}
+  .tag{
+    font-family:var(--mono); font-size:11px; font-weight:600; color:var(--accent-ink);
+    background:var(--accent-soft); border-radius:5px; height:20px; display:grid; place-items:center; margin-top:3px;
+  }
+  .notes p{margin:0; font-size:13.5px; line-height:1.7}
+  .ids{display:block; margin-top:5px; font-family:var(--mono); font-size:11px; color:var(--faint); letter-spacing:.02em}
+
+  /* ---------- device frames ---------- */
+  .phone{
+    width:min(390px,100%); margin-inline:auto;
+    border:1px solid var(--line-strong); border-radius:26px; background:var(--surface);
+    box-shadow:var(--shadow); overflow:hidden;
+  }
+  .statusbar{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 18px 4px; font-family:var(--mono); font-size:11px; color:var(--muted);
+  }
+  .screen{padding:0 0 0; font-size:13.5px}
+  .desktop{
+    border:1px solid var(--line-strong); border-radius:12px; background:var(--surface);
+    box-shadow:var(--shadow); overflow:hidden;
+  }
+  .browserbar{
+    display:flex; align-items:center; gap:8px; padding:9px 14px;
+    background:var(--surface-2); border-bottom:1px solid var(--line);
+  }
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--line-strong); flex:none}
+  .urlbar{
+    flex:1; background:var(--surface); border:1px solid var(--line); border-radius:6px;
+    font-family:var(--mono); font-size:11px; color:var(--faint); padding:3px 10px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  /* marker badges inside mocks */
+  .mk{
+    display:inline-grid; place-items:center; width:17px; height:17px; border-radius:50%;
+    background:var(--accent); color:#fff; font-family:var(--mono); font-size:10px; font-weight:600;
+    vertical-align:1px; flex:none;
+  }
+
+  /* ---------- app chrome inside mocks ---------- */
+  .appbar{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 14px; border-bottom:1px solid var(--line); background:var(--surface);
+  }
+  .mode{
+    font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.08em;
+    padding:2px 7px; border-radius:4px; background:var(--warn-soft); color:var(--warn); border:1px solid currentColor;
+  }
+  .appname{font-size:12.5px; font-weight:700; letter-spacing:.02em}
+
+  .pnl-hero{padding:16px 16px 14px; border-bottom:1px solid var(--line)}
+  .pnl-label{font-size:11px; color:var(--muted); letter-spacing:.06em}
+  .pnl-big{
+    font-family:var(--mono); font-weight:600; font-size:34px; line-height:1.15;
+    font-variant-numeric:tabular-nums; letter-spacing:-.01em; margin-top:2px;
+  }
+  .pnl-big.up{color:var(--up)} .pnl-big.down{color:var(--down)}
+  .pnl-sub{display:flex; flex-wrap:wrap; gap:10px; margin-top:7px; font-size:11.5px; color:var(--muted)}
+  .pnl-sub b{font-family:var(--mono); font-weight:600; color:var(--ink-2)}
+
+  .gauges{display:grid; gap:9px; padding:12px 16px; border-bottom:1px solid var(--line)}
+  .gauge-row{display:grid; grid-template-columns:1fr auto; gap:8px; font-size:11.5px; color:var(--muted); align-items:center}
+  .gauge-row b{font-family:var(--mono); font-size:11.5px; color:var(--ink-2); font-weight:600}
+  .bar{grid-column:1/-1; height:5px; border-radius:3px; background:var(--surface-2); overflow:hidden}
+  .bar i{display:block; height:100%; background:var(--accent); border-radius:3px}
+  .bar i.warn{background:var(--warn)}
+
+  .tabs{display:flex; border-bottom:1px solid var(--line); background:var(--surface)}
+  .tabs button{
+    flex:1; font:inherit; font-size:12px; padding:10px 4px; background:none; border:none;
+    color:var(--muted); border-bottom:2px solid transparent; cursor:default; font-family:var(--mono);
+  }
+  .tabs button[aria-current]{color:var(--accent-ink); border-bottom-color:var(--accent); font-weight:600}
+
+  .cardlist{padding:12px; display:grid; gap:10px; background:var(--ground)}
+  .ocard{
+    background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden;
+  }
+  .ocard.urgent{border-color:var(--up); border-width:1.5px}
+  .ocard-top{display:flex; align-items:flex-start; gap:9px; padding:11px 12px 9px}
+  .side{
+    font-family:var(--mono); font-size:11px; font-weight:600; padding:3px 8px; border-radius:5px; flex:none; margin-top:2px;
+  }
+  .side.buy{background:var(--up-soft); color:var(--up)}
+  .side.sell{background:var(--down-soft); color:var(--down)}
+  .side.stop{background:var(--up); color:#fff}
+  .nm{font-weight:700; font-size:14px; line-height:1.4}
+  .cd{font-family:var(--mono); font-size:11px; color:var(--faint); letter-spacing:.04em}
+  .qty{margin-left:auto; text-align:right; font-family:var(--mono); font-size:11.5px; color:var(--ink-2); line-height:1.5}
+  .qty b{display:block; font-size:15px; font-weight:600; color:var(--ink)}
+  .ocard-body{padding:0 12px 10px; display:grid; gap:6px}
+  .kv{display:flex; gap:8px; font-size:11.5px; color:var(--muted); align-items:baseline}
+  .kv span:first-child{flex:none; width:66px}
+  .kv b{font-family:var(--mono); color:var(--ink-2); font-weight:600; font-variant-numeric:tabular-nums}
+  .why{
+    font-size:11.5px; color:var(--ink-2); background:var(--surface-2);
+    border-radius:6px; padding:7px 9px; line-height:1.6;
+  }
+  .why em{font-style:normal; font-family:var(--mono); font-size:10.5px; color:var(--accent-ink); font-weight:600}
+  .ocard-act{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line); border-top:1px solid var(--line)}
+  .ocard-act button{
+    font:inherit; font-size:12.5px; font-weight:700; padding:12px 4px; border:none; cursor:default;
+    background:var(--surface); color:var(--accent-ink); min-height:44px;
+  }
+  .ocard-act button.primary{background:var(--accent); color:#fff}
+  .deadline{
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+    padding:6px 12px; background:var(--warn-soft); color:var(--warn);
+    font-family:var(--mono); font-size:11px; font-weight:600;
+  }
+  .done{
+    padding:9px 12px; font-size:12px; color:var(--muted);
+    display:flex; align-items:center; gap:7px; background:var(--surface-2);
+  }
+  .done b{color:var(--accent-ink); font-family:var(--mono); font-size:11px}
+
+  .bottombar{
+    display:grid; grid-template-columns:repeat(4,1fr); border-top:1px solid var(--line);
+    background:var(--surface); position:sticky; bottom:0;
+  }
+  .bottombar div{
+    padding:9px 2px 11px; text-align:center; font-size:10.5px; color:var(--muted); min-height:48px;
+  }
+  .bottombar div[aria-current]{color:var(--accent-ink); font-weight:700}
+  .bottombar .ic{display:block; font-family:var(--mono); font-size:13px; margin-bottom:2px}
+  .bottombar .kill{color:var(--up); font-weight:700}
+
+  /* notification mock */
+  .lock{
+    background:linear-gradient(160deg,#16262A,#0C1618); border-radius:26px; padding:26px 12px 22px;
+    min-height:420px; display:flex; flex-direction:column; gap:11px;
+  }
+  .lock-time{
+    font-family:var(--mono); color:#D8E4E6; text-align:center; font-size:42px; font-weight:400;
+    letter-spacing:.02em; line-height:1.1; margin-bottom:2px;
+  }
+  .lock-date{font-size:12px; color:#8FA5A8; text-align:center; margin-bottom:14px}
+  .notif{
+    background:rgba(238,245,246,.94); border-radius:14px; padding:10px 12px; color:#101A1C;
+  }
+  .notif.crit{background:rgba(255,236,232,.96); border-left:4px solid #C43D2E}
+  .notif-head{display:flex; align-items:center; gap:6px; font-size:10.5px; color:#5C6E72; margin-bottom:4px}
+  .notif-head b{font-weight:700; color:#101A1C; font-size:10.5px}
+  .notif-head .t{margin-left:auto; font-family:var(--mono)}
+  .notif-title{font-weight:700; font-size:13px; line-height:1.45; margin-bottom:3px}
+  .notif-body{font-size:12px; line-height:1.55; color:#33474B}
+  .notif-body .num{font-weight:600}
+
+  /* holdings / rows */
+  .rows{display:grid; gap:1px; background:var(--line)}
+  .row{background:var(--surface); padding:10px 13px; display:grid; gap:5px}
+  .row-top{display:flex; align-items:baseline; gap:8px}
+  .row-top .nm{font-size:13px}
+  .row-top .pl{margin-left:auto; font-family:var(--mono); font-weight:600; font-variant-numeric:tabular-nums}
+  .pl.up{color:var(--up)} .pl.down{color:var(--down)}
+  .row-sub{display:flex; flex-wrap:wrap; gap:12px; font-size:11px; color:var(--muted); font-family:var(--mono)}
+  .rprog{height:4px; border-radius:2px; background:var(--surface-2); overflow:hidden; position:relative}
+  .rprog i{position:absolute; top:0; bottom:0; background:var(--accent); border-radius:2px}
+  .rprog u{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--up)}
+
+  .sect-label{
+    padding:11px 14px 6px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--faint); font-weight:700; background:var(--surface);
+  }
+
+  /* input mock */
+  .fillrow{
+    background:var(--surface); padding:11px 13px; display:grid;
+    grid-template-columns:1fr 116px; gap:10px; align-items:center;
+  }
+  .inp{
+    border:1.5px solid var(--line-strong); border-radius:8px; padding:8px 10px; min-height:44px;
+    font-family:var(--mono); font-size:15px; font-weight:600; color:var(--ink);
+    display:flex; align-items:center; justify-content:flex-end; gap:3px; background:var(--surface);
+  }
+  .inp.filled{border-color:var(--accent); background:var(--accent-soft); color:var(--accent-ink)}
+  .inp small{font-size:10px; font-weight:400; color:var(--muted)}
+  .prov{
+    font-family:var(--mono); font-size:9.5px; font-weight:600; letter-spacing:.06em;
+    background:var(--warn-soft); color:var(--warn); border-radius:4px; padding:1px 5px;
+  }
+
+  /* contribution bars */
+  .contrib{display:grid; gap:8px; padding:12px 14px}
+  .cbar{display:grid; grid-template-columns:82px 1fr 62px; gap:9px; align-items:center; font-size:11.5px}
+  .cbar .t{font-family:var(--mono); font-size:10.5px; color:var(--ink-2)}
+  .cbar .v{font-family:var(--mono); font-weight:600; text-align:right; font-variant-numeric:tabular-nums}
+  .track{height:7px; border-radius:4px; background:var(--surface-2); overflow:hidden}
+  .track i{display:block; height:100%; border-radius:4px; background:var(--accent)}
+  .track i.neg{background:var(--down)}
+
+  /* desktop grid */
+  .dgrid{display:grid; grid-template-columns:236px minmax(0,1fr) 268px; gap:1px; background:var(--line); min-height:430px}
+  .dpane{background:var(--surface); padding:0; overflow:hidden}
+  @media(max-width:760px){
+    .dgrid{grid-template-columns:1fr}
+  }
+  .dhead{
+    display:flex; align-items:center; gap:10px; padding:9px 14px;
+    border-bottom:1px solid var(--line); background:var(--surface);
+  }
+  .dhead .appname{font-size:13px}
+  .dhead .spacer{margin-left:auto}
+  .btn{
+    font:inherit; font-family:var(--mono); font-size:11px; font-weight:600; padding:5px 10px;
+    border-radius:6px; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink-2); cursor:default;
+  }
+  .btn.kill{border-color:var(--up); color:var(--up)}
+  .btn.acc{background:var(--accent); border-color:var(--accent); color:#fff}
+  .dropzone{
+    margin:12px 14px; border:1.5px dashed var(--line-strong); border-radius:9px;
+    padding:14px 12px; text-align:center; font-size:11.5px; color:var(--muted); line-height:1.6;
+  }
+  .dropzone b{display:block; color:var(--ink-2); font-size:12.5px; margin-bottom:2px}
+
+  table{width:100%; border-collapse:collapse; font-size:11.5px}
+  th,td{padding:7px 10px; text-align:right; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums}
+  th{font-size:10px; letter-spacing:.06em; color:var(--faint); font-weight:700; text-align:right; text-transform:uppercase}
+  th:first-child,td:first-child{text-align:left}
+  td{font-family:var(--mono); color:var(--ink-2)}
+  td.nmc{font-family:var(--sans); color:var(--ink); font-weight:500}
+  .tablewrap{overflow-x:auto}
+
+  /* equity chart */
+  .chartbox{padding:14px 14px 6px}
+  .chartbox svg{display:block; width:100%; height:auto; max-width:100%}
+  .chart-cap{display:flex; flex-wrap:wrap; gap:14px; padding:0 14px 12px; font-size:11px; color:var(--muted)}
+  .chart-cap b{font-family:var(--mono); color:var(--ink-2)}
+
+  /* closing */
+  .close{padding-block:48px 64px}
+  .close h2{font-family:var(--serif); font-weight:600; font-size:22px; margin-bottom:16px}
+  .close ul{margin:0; padding-left:1.15em; color:var(--ink-2); max-width:66ch}
+  .close li{margin-bottom:9px; font-size:14px}
+  .caveat{
+    margin-top:28px; border-left:3px solid var(--warn); background:var(--warn-soft);
+    padding:14px 16px; border-radius:0 8px 8px 0; font-size:13px; color:var(--ink-2); max-width:70ch;
+  }
+  .caveat b{color:var(--ink)}
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="eyebrow">short-trade ／ 画面設計案 v0.1</div>
+    <h1>スマホで受け取り、三タップで返す。</h1>
+    <p class="lede">
+      資金5万円・現物のみ・S株による日足スイング運用を前提とした、半自動トレードツールの画面設計案です。
+      発注操作だけは利用者が SBI証券 株アプリで行うため、本ツールの画面は
+      <b>「気づく → 判断を確認する → 実行を記録する」</b>の三点に絞って設計しています。
+    </p>
+    <div class="meta">
+      <span class="chip">主デバイス <b>スマートフォン</b></span>
+      <span class="chip">実装 <b>レスポンシブWeb（PWA）</b></span>
+      <span class="chip">執行枠 <b>9:00 / 12:30 / 15:30</b></span>
+      <span class="chip">要求ID <b>docs/15</b></span>
+    </div>
+
+    <div class="flow">
+      <div><span>STEP 1</span><strong>通知を受け取る</strong></div>
+      <div><span>STEP 2</span><strong>指示カードを見る</strong></div>
+      <div><span>STEP 3</span><strong>根拠を確かめる</strong></div>
+      <div class="byuser"><span>STEP 4 ・ 利用者</span><strong>SBI証券アプリで発注</strong></div>
+      <div><span>STEP 5</span><strong>発注済みを記録</strong></div>
+      <div><span>STEP 6</span><strong>約定価格を入れる</strong></div>
+      <div><span>STEP 7</span><strong>損益を確認する</strong></div>
+    </div>
+
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--up)"></i>プラス・買い（日本の慣行に合わせ赤）</span>
+      <span><i class="swatch" style="background:var(--down)"></i>マイナス・売り（青）</span>
+      <span><i class="swatch" style="background:var(--accent)"></i>操作・進捗</span>
+      <span><i class="swatch" style="background:var(--warn)"></i>期限・暫定値</span>
+    </div>
+  </header>
+
+  <!-- ============ STEP 1 ============ -->
+  <section class="step">
+    <div class="step-head"><span class="step-no">1</span><h2>通知 — ロック画面で用が足りる</h2></div>
+    <p class="step-sub"><span class="dev">SP</span>6:00 定時通知と 6:30 最終リマインド。9:00執行枠の締切は 7:00。</p>
+
+    <div class="pair">
+      <div class="phone">
+        <div class="lock">
+          <div class="lock-time">06:30</div>
+          <div class="lock-date">9月11日（金）</div>
+
+          <div class="notif crit">
+            <div class="notif-head"><b>short-trade</b><span>・損切り</span><span class="t">今</span></div>
+            <div class="notif-title">【損切り】6758 ソニーグループ 1株 を売り</div>
+            <div class="notif-body">論理ストップ <span class="num">3,540円</span> に到達。9:00執行枠・締切 <span class="num">7:00</span>。</div>
+          </div>
+
+          <div class="notif">
+            <div class="notif-head"><b>short-trade</b><span>・最終リマインド</span><span class="t">今</span></div>
+            <div class="notif-title">未発注 3件／残り 30分</div>
+            <div class="notif-body">買い 4063 信越化学 1株・買い 9432 NTT 30株・売り 6758 ソニー 1株</div>
+          </div>
+
+          <div class="notif">
+            <div class="notif-head"><b>short-trade</b><span>・本日の指示</span><span class="t">6:00</span></div>
+            <div class="notif-title">9:00執行 ｜ 買い2件・売り1件</div>
+            <div class="notif-body">概算必要額 <span class="num">10,920円</span>／買付余力 <span class="num">18,430円</span></div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="notes">
+        <li><span class="tag">1</span><p>通知本文だけで<b>銘柄・売買・数量・期限</b>が分かる。アプリを開かずに「これは実行する」と判断できる状態を目標にする。<span class="ids">FR-333</span></p></li>
+        <li><span class="tag">2</span><p>損切りシグナルは<b>常に最上位</b>。赤帯と「損切り」ラベルで他と視覚的に分離し、おやすみ時間帯でも例外的に送る。<span class="ids">FR-303 ／ FR-336</span></p></li>
+        <li><span class="tag">3</span><p>初回通知は<b>締切60分前</b>、最終リマインドは未発注がある場合のみ。0件の日は送らない。<span class="ids">CR-071 ／ FR-302</span></p></li>
+        <li><span class="tag">4</span><p>iOSのWeb Pushは<b>ホーム画面に追加したPWAでのみ動作</b>する。未追加ならメールを主チャネルへ自動切替し、初回セットアップで追加を案内する。<span class="ids">FR-331 ／ FR-332</span></p></li>
+        <li><span class="tag">5</span><p>送信履歴と既読を保持し、「届かなかった」のか「気づかなかった」のかを後から切り分けられるようにする。<span class="ids">FR-334 ／ FR-335</span></p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ STEP 2 ============ -->
+  <section class="step">
+    <div class="step-head"><span class="step-no">2</span><h2>発注指示カード — 一覧が作業画面</h2></div>
+    <p class="step-sub"><span class="dev">SP</span>通知から直接ここへ着地する。スクロールせずに損益・リスク・期限が見える。</p>
+
+    <div class="pair">
+      <div class="phone">
+        <div class="statusbar"><span>6:31</span><span>▮▮▮ ᯤ 82%</span></div>
+        <div class="screen">
+          <div class="appbar">
+            <span class="appname">short-trade</span>
+            <span class="mode">実弾 ・ 5万円</span>
+          </div>
+
+          <div class="pnl-hero">
+            <div class="pnl-label">当日純損益（手数料・金利控除後）</div>
+            <div class="pnl-big up">+1,240<small style="font-size:16px"> 円</small></div>
+            <div class="pnl-sub">
+              <span>実現 <b>+801</b></span>
+              <span>含み <b>+439</b></span>
+              <span>コスト <b>0</b></span>
+              <span>資産 <b>51,240</b></span>
+            </div>
+          </div>
+
+          <div class="gauges">
+            <div class="gauge-row"><span>ポートフォリオ・ヒート</span><b>2.8% / 6.0%</b>
+              <span class="bar"><i style="width:47%"></i></span></div>
+            <div class="gauge-row"><span>日次損失上限の消化</span><b>0 / −1,000円</b>
+              <span class="bar"><i style="width:0%"></i></span></div>
+            <div class="gauge-row"><span>シグナル実行率（直近30件）</span><b>94%</b>
+              <span class="bar"><i style="width:94%"></i></span></div>
+          </div>
+
+          <div class="tabs">
+            <button aria-current="true">9:00 ・3件</button>
+            <button>12:30 ・0</button>
+            <button>15:30 ・0</button>
+          </div>
+
+          <div class="cardlist">
+
+            <div class="ocard urgent">
+              <div class="deadline"><span>締切 7:00 まで 残り 29分</span><span>損切り</span></div>
+              <div class="ocard-top">
+                <span class="side stop">損切</span>
+                <div><div class="nm">ソニーグループ</div><div class="cd">6758 ・ 東証P</div></div>
+                <div class="qty"><b>1株</b>売り</div>
+              </div>
+              <div class="ocard-body">
+                <div class="kv"><span>想定金額</span><b>3,559円</b></div>
+                <div class="kv"><span>建値</span><b>3,620円</b><span style="color:var(--down)">−61円（−1.7%）</span></div>
+                <div class="why">論理ストップ <em>3,540円</em> に到達。<em>ST-04</em> のトレンドテンプレート崩れを確認。</div>
+              </div>
+              <div class="ocard-act"><button>コードをコピー</button><button class="primary">発注済み</button></div>
+            </div>
+
+            <div class="ocard">
+              <div class="ocard-top">
+                <span class="side buy">買い</span>
+                <div><div class="nm">信越化学工業</div><div class="cd">4063 ・ 東証P</div></div>
+                <div class="qty"><b>1株</b>成行</div>
+              </div>
+              <div class="ocard-body">
+                <div class="kv"><span>想定金額</span><b>6,180円</b></div>
+                <div class="kv"><span>損切り</span><b>5,930円</b><span>想定損失 −500円</span></div>
+                <div class="why"><em>ST-04</em> VCP収縮のブレイク ＋ <em>ST-09</em> 相対強度 上位8%。統合スコア <em>0.71</em>／レジーム: 上昇・低ボラ</div>
+              </div>
+              <div class="ocard-act"><button>コードをコピー</button><button class="primary">発注済み</button></div>
+            </div>
+
+            <div class="ocard">
+              <div class="ocard-top">
+                <span class="side buy">買い</span>
+                <div><div class="nm">日本電信電話</div><div class="cd">9432 ・ 東証P</div></div>
+                <div class="qty"><b>30株</b>成行</div>
+              </div>
+              <div class="ocard-body">
+                <div class="kv"><span>想定金額</span><b>4,740円</b></div>
+                <div class="kv"><span>損切り</span><b>148円</b><span>想定損失 −300円</span></div>
+                <div class="why"><em>ST-12</em> 200日線上のRSI(2)=4 ＋ <em>ST-17</em> 分散枠。統合スコア <em>0.58</em></div>
+              </div>
+              <div class="ocard-act"><button>コードをコピー</button><button class="primary">発注済み</button></div>
+            </div>
+
+            <div class="done"><span class="mk">✓</span>本日の見送り <b>0件</b> ／ 期限切れ <b>0件</b></div>
+          </div>
+
+          <div class="bottombar">
+            <div aria-current="true"><span class="ic">▤</span>指示</div>
+            <div><span class="ic">◧</span>建玉</div>
+            <div><span class="ic">◈</span>損益</div>
+            <div class="kill"><span class="ic">■</span>全停止</div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="notes">
+        <li><span class="tag">1</span><p>当日純損益は<b>スクロールせずに最大サイズ</b>で。手数料・金利控除後の純額であることを見出しに明記する。<span class="ids">PL-002 ／ PL-050 ／ UI-022</span></p></li>
+        <li><span class="tag">2</span><p>リスクの残量を数字とゲージで常時表示。「あといくら損したら止まるか」が一目で分かる。<span class="ids">PL-053 ／ RM-010 ／ RM-020</span></p></li>
+        <li><span class="tag">3</span><p>実行率を成績と同じ画面に置く。<b>半自動では「人が実行しないこと」が最大のリスク</b>なので、成績と同格に扱う。<span class="ids">FR-318</span></p></li>
+        <li><span class="tag">4</span><p>執行枠（9:00 / 12:30 / 15:30）でタブ分割。S株は注文時間帯で執行枠が決まるため、枠が第一の分類軸になる。<span class="ids">CR-070 ／ FR-301</span></p></li>
+        <li><span class="tag">5</span><p>カードに<b>銘柄・コード・売買・数量・想定金額・損切り価格・根拠・期限</b>を載せる。詳細を開かなくても発注できる情報量にする。<span class="ids">FR-311</span></p></li>
+        <li><span class="tag">6</span><p>「コードをコピー」でクリップボードへ。<b>SBI証券アプリへのディープリンクは不可を既定</b>として設計し、利用者はアプリを開いて貼り付ける。<span class="ids">FR-312 ／ FR-313</span></p></li>
+        <li><span class="tag">7</span><p>「発注済み」は<b>取り消せるので確認なしの1タップ</b>。全停止など破壊的操作だけ確認を挟む。<span class="ids">FR-314 ／ UI-025</span></p></li>
+        <li><span class="tag">8</span><p>主要アクションは画面下部、タップ領域44px以上。通知タップから「発注済み」まで<b>3タップ以内</b>。<span class="ids">UI-020 ／ UI-021 ／ FR-319</span></p></li>
+        <li><span class="tag">9</span><p>締切超過は自動で「見送り」記録に落ち、仮想成績の追跡対象になる。件数を常に画面に出しておく。<span class="ids">FR-304 ／ FR-318</span></p></li>
+        <li><span class="tag">10</span><p>稼働モード（実弾／ペーパー／検証）を常時バッジ表示。色で識別できるようにする。<span class="ids">NFR-040 ／ FR-263</span></p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ STEP 3 ============ -->
+  <section class="step">
+    <div class="step-head"><span class="step-no">3</span><h2>根拠 — なぜこの売買なのか</h2></div>
+    <p class="step-sub"><span class="dev">SP</span>カードをタップして開く。合議の内訳とリスクゲートの通過記録。</p>
+
+    <div class="pair">
+      <div class="phone">
+        <div class="statusbar"><span>6:32</span><span>▮▮▮ ᯤ 82%</span></div>
+        <div class="screen">
+          <div class="appbar"><span class="appname">← 4063 信越化学工業</span><span class="mode">実弾 ・ 5万円</span></div>
+
+          <div class="sect-label">合議の内訳（統合スコア 0.71）</div>
+          <div class="contrib">
+            <div class="cbar"><span class="t">ST-04 SEPA</span><span class="track"><i style="width:60%"></i></span><span class="v">0.42</span></div>
+            <div class="cbar"><span class="t">ST-09 モメンタム</span><span class="track"><i style="width:44%"></i></span><span class="v">0.31</span></div>
+            <div class="cbar"><span class="t">ST-11 新高値</span><span class="track"><i style="width:26%"></i></span><span class="v">0.18</span></div>
+            <div class="cbar"><span class="t">ST-12 RSI2逆張り</span><span class="track"><i class="neg" style="width:14%"></i></span><span class="v">−0.10</span></div>
+          </div>
+
+          <div class="sect-label">成立条件のスナップショット</div>
+          <div class="rows">
+            <div class="row"><div class="row-top"><span class="nm">レジーム</span><span class="pl" style="color:var(--ink-2)">上昇・低ボラ</span></div>
+              <div class="row-sub"><span>TOPIX &gt; 200MA</span><span>ADX 27.4</span><span>日経VI 18.2</span></div></div>
+            <div class="row"><div class="row-top"><span class="nm">VCP 収縮</span><span class="pl" style="color:var(--ink-2)">3段階</span></div>
+              <div class="row-sub"><span>押し幅 12%→7%→4%</span><span>出来高 −38%</span></div></div>
+            <div class="row"><div class="row-top"><span class="nm">相対強度</span><span class="pl" style="color:var(--ink-2)">上位 8%</span></div>
+              <div class="row-sub"><span>RS 92</span><span>52週高値まで −3.1%</span></div></div>
+          </div>
+
+          <div class="sect-label">リスクゲート</div>
+          <div class="rows">
+            <div class="row"><div class="row-top"><span class="nm"><span class="mk">✓</span> 1トレードリスク</span><span class="pl" style="color:var(--accent-ink)">1.0% / 2.0%</span></div></div>
+            <div class="row"><div class="row-top"><span class="nm"><span class="mk">✓</span> 1銘柄あたり投下額</span><span class="pl" style="color:var(--accent-ink)">12.4% / 20%</span></div></div>
+            <div class="row"><div class="row-top"><span class="nm"><span class="mk">✓</span> 差金決済チェック</span><span class="pl" style="color:var(--accent-ink)">当日回転なし</span></div></div>
+            <div class="row"><div class="row-top"><span class="nm"><span class="mk">✓</span> 決算跨ぎ</span><span class="pl" style="color:var(--accent-ink)">次回まで 34日</span></div></div>
+          </div>
+
+          <div class="sect-label">損切り設計</div>
+          <div class="rows">
+            <div class="row">
+              <div class="row-top"><span class="nm">論理ストップ 5,930円</span><span class="pl down">−250円</span></div>
+              <div class="row-sub"><span>逆指値は置けない（S株）</span></div>
+              <div class="row-sub"><span>ギャップ込み想定損失 −500円（2倍見積り）</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="notes">
+        <li><span class="tag">1</span><p>どの戦略がどれだけ寄与したかを<b>符号つきで</b>見せる。反対を向いた戦略も隠さないことで、合議が働いていることが分かる。<span class="ids">DEC-028 ／ DEC-040 ／ DEC-042</span></p></li>
+        <li><span class="tag">2</span><p>条件成立時の実測値をそのまま保存・表示する。後から「なぜ買ったのか」を再構成できる状態にしておく。<span class="ids">DEC-041 ／ FR-225</span></p></li>
+        <li><span class="tag">3</span><p>リスクゲートは通過も却下も記録する。<b>差金決済チェック</b>は現物・小資金では毎回効く実務的な項目。<span class="ids">RM-006 ／ RM-063 ／ DEC-043</span></p></li>
+        <li><span class="tag">4</span><p>S株は逆指値を置けないため、損切りは<b>論理ストップ＋次執行タイミングの成行</b>。この事実と、ギャップ込みで2倍に見積もった想定損失を画面上で明示する。<span class="ids">RM-001a ／ RM-001b</span></p></li>
+        <li><span class="tag">5</span><p>決算跨ぎ禁止は残日数で表示する。ギャップが論理ストップの想定を超えるための措置。<span class="ids">RM-001d</span></p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ STEP 6 ============ -->
+  <section class="step">
+    <div class="step-head"><span class="step-no">6</span><h2>約定入力 — 入れなくても止まらない</h2></div>
+    <p class="step-sub"><span class="dev">SP</span>執行後 16:00 の通知から。省略しても参考価格で暫定計上され、後日CSVで自動補正される。</p>
+
+    <div class="pair">
+      <div class="phone">
+        <div class="statusbar"><span>16:02</span><span>▮▮▮ ᯤ 64%</span></div>
+        <div class="screen">
+          <div class="appbar"><span class="appname">約定の確認 ・ 9月11日</span><span class="mode">実弾 ・ 5万円</span></div>
+
+          <div class="sect-label">9:00執行枠 ・ 3件</div>
+          <div class="rows">
+            <div class="fillrow">
+              <div><div class="nm" style="font-size:13px">信越化学工業 <span class="cd">4063</span></div>
+                <div class="row-sub"><span>買い 1株</span><span>指示 6,180円</span></div></div>
+              <div class="inp filled">6,205<small>円</small></div>
+            </div>
+            <div class="fillrow">
+              <div><div class="nm" style="font-size:13px">日本電信電話 <span class="cd">9432</span></div>
+                <div class="row-sub"><span>買い 30株</span><span>指示 158円</span></div></div>
+              <div class="inp">157<small>円</small></div>
+            </div>
+            <div class="fillrow">
+              <div><div class="nm" style="font-size:13px">ソニーグループ <span class="cd">6758</span></div>
+                <div class="row-sub"><span>売り 1株</span><span>指示 3,559円</span> <span class="prov">暫定</span></div></div>
+              <div class="inp" style="color:var(--faint)">未入力</div>
+            </div>
+          </div>
+
+          <div class="done" style="justify-content:space-between">
+            <span>未入力は始値で暫定計上します</span><b>参考 3,551円</b>
+          </div>
+
+          <div class="cardlist" style="background:var(--surface); padding:12px 14px">
+            <div class="ocard" style="border:none; background:var(--surface-2)">
+              <div class="ocard-body" style="padding:11px 12px">
+                <div class="kv"><span>確定損益</span><b style="color:var(--up)">+801円</b></div>
+                <div class="kv"><span>暫定を含む</span><b style="color:var(--up)">+1,240円</b> <span class="prov">暫定</span></div>
+                <div class="kv"><span>最終CSV取込</span><b>9月8日</b> <span style="color:var(--warn)">3営業日前</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bottombar">
+            <div><span class="ic">▤</span>指示</div>
+            <div><span class="ic">◧</span>建玉</div>
+            <div aria-current="true"><span class="ic">◈</span>損益</div>
+            <div class="kill"><span class="ic">■</span>全停止</div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="notes">
+        <li><span class="tag">1</span><p>数値入力は<b>数値キーボードを起動</b>し、小数点にも対応。1件あたりの入力を1フィールドに限定する。<span class="ids">UI-024 ／ FR-315</span></p></li>
+        <li><span class="tag">2</span><p>未入力でも運用は止まらない。執行枠の参考価格（始値／終値）で暫定計上し、<b>暫定であることを必ずバッジで示す</b>。<span class="ids">FR-315 ／ PL-046</span></p></li>
+        <li><span class="tag">3</span><p>「確定」と「暫定を含む」を並べて出す。数字の性質が違うものを1つの金額に混ぜない。<span class="ids">PL-046 ／ PL-057</span></p></li>
+        <li><span class="tag">4</span><p>CSVを一定日数（既定3営業日）取り込んでいなければ警告する。放置すると損益が暫定のままになり、判断を誤る。<span class="ids">PL-047</span></p></li>
+        <li><span class="tag">5</span><p>電車内など通信が不安定な状況を想定し、送信失敗はローカル保持して自動リトライする。<span class="ids">UI-026</span></p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ STEP 7 ============ -->
+  <section class="step">
+    <div class="step-head"><span class="step-no">7</span><h2>損益 — スマホで完結する範囲</h2></div>
+    <p class="step-sub"><span class="dev">SP</span>建玉、戦略別の寄与、資金曲線。分析はPCへ、把握はここで。</p>
+
+    <div class="pair">
+      <div class="phone">
+        <div class="statusbar"><span>21:14</span><span>▮▮▮ ᯤ 41%</span></div>
+        <div class="screen">
+          <div class="appbar"><span class="appname">損益</span><span class="mode">実弾 ・ 5万円</span></div>
+
+          <div class="pnl-hero">
+            <div class="pnl-label">当日純損益（手数料・金利控除後）</div>
+            <div class="pnl-big up">+1,240<small style="font-size:16px"> 円</small></div>
+            <div class="pnl-sub"><span>当日 <b>+2.48%</b></span><span>今月 <b>+3,180</b></span><span>累計 <b>+1,240</b></span></div>
+          </div>
+
+          <div class="chartbox">
+            <svg viewBox="0 0 340 108" role="img" aria-label="資金曲線。48,900円から51,240円まで推移し、最大ドローダウンは3.1%">
+              <line x1="30" y1="12" x2="336" y2="12" stroke="var(--line)" stroke-width="1"/>
+              <line x1="30" y1="52" x2="336" y2="52" stroke="var(--line)" stroke-width="1"/>
+              <line x1="30" y1="92" x2="336" y2="92" stroke="var(--line)" stroke-width="1"/>
+              <text x="0" y="15" font-size="8" fill="var(--faint)" font-family="monospace">51.5k</text>
+              <text x="0" y="55" font-size="8" fill="var(--faint)" font-family="monospace">50.0k</text>
+              <text x="0" y="95" font-size="8" fill="var(--faint)" font-family="monospace">48.5k</text>
+              <path d="M30 78 L52 74 L74 82 L96 68 L118 71 L140 58 L162 63 L184 49 L206 55 L228 40 L250 46 L272 34 L294 38 L316 24 L336 18"
+                    fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+              <path d="M30 78 L52 74 L74 82 L96 68 L118 71 L140 58 L162 63 L184 49 L206 55 L228 40 L250 46 L272 34 L294 38 L316 24 L336 18 L336 100 L30 100 Z"
+                    fill="var(--accent)" opacity="0.09"/>
+              <circle cx="336" cy="18" r="3" fill="var(--accent)"/>
+            </svg>
+          </div>
+          <div class="chart-cap">
+            <span>資産 <b>51,240円</b></span><span>最大DD <b>−3.1%</b></span><span>実行率 <b>94%</b></span>
+          </div>
+
+          <div class="sect-label">戦略別の寄与（当日）</div>
+          <div class="contrib">
+            <div class="cbar"><span class="t">ST-04 SEPA</span><span class="track"><i style="width:86%"></i></span><span class="v" style="color:var(--up)">+680</span></div>
+            <div class="cbar"><span class="t">ST-09 モメンタム</span><span class="track"><i style="width:52%"></i></span><span class="v" style="color:var(--up)">+410</span></div>
+            <div class="cbar"><span class="t">ST-12 RSI2</span><span class="track"><i style="width:19%"></i></span><span class="v" style="color:var(--up)">+150</span></div>
+            <div class="cbar"><span class="t">ST-17 分散逆張り</span><span class="track"><i class="neg" style="width:0%"></i></span><span class="v">0</span></div>
+          </div>
+
+          <div class="sect-label">建玉 4件 ・ 含み +439円</div>
+          <div class="rows">
+            <div class="row">
+              <div class="row-top"><span class="nm">トヨタ自動車</span><span class="cd">7203</span><span class="pl up">+108</span></div>
+              <div class="row-sub"><span>2株</span><span>平均 2,780</span><span>現在 2,834</span><span>+1.9%</span></div>
+              <div class="rprog"><i style="width:38%"></i><u style="left:0"></u></div>
+              <div class="row-sub"><span>R進捗 0.4R</span><span>損切 2,725</span><span>保有 3日</span><span>ST-04</span></div>
+            </div>
+            <div class="row">
+              <div class="row-top"><span class="nm">日本電信電話</span><span class="cd">9432</span><span class="pl up">+240</span></div>
+              <div class="row-sub"><span>40株</span><span>平均 152</span><span>現在 158</span><span>+3.9%</span></div>
+              <div class="rprog"><i style="width:72%"></i><u style="left:0"></u></div>
+              <div class="row-sub"><span>R進捗 1.2R</span><span>損切 148</span><span>保有 6日</span><span>ST-12</span></div>
+            </div>
+            <div class="row">
+              <div class="row-top"><span class="nm">三菱商事</span><span class="cd">8058</span><span class="pl up">+152</span></div>
+              <div class="row-sub"><span>2株</span><span>平均 2,410</span><span>現在 2,486</span><span>+3.2%</span></div>
+              <div class="rprog"><i style="width:64%"></i><u style="left:0"></u></div>
+              <div class="row-sub"><span>R進捗 0.9R</span><span>損切 2,335</span><span>保有 2日</span><span>ST-09</span></div>
+            </div>
+            <div class="row">
+              <div class="row-top"><span class="nm">ソニーグループ</span><span class="cd">6758</span><span class="pl down">−61</span></div>
+              <div class="row-sub"><span>1株</span><span>平均 3,620</span><span>現在 3,559</span><span>−1.7%</span></div>
+              <div class="rprog"><i style="width:0%"></i><u style="left:88%"></u></div>
+              <div class="row-sub"><span style="color:var(--up)">損切り指示 発行済み</span><span>損切 3,540</span><span>ST-04</span></div>
+            </div>
+          </div>
+
+          <div class="bottombar">
+            <div><span class="ic">▤</span>指示</div>
+            <div><span class="ic">◧</span>建玉</div>
+            <div aria-current="true"><span class="ic">◈</span>損益</div>
+            <div class="kill"><span class="ic">■</span>全停止</div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="notes">
+        <li><span class="tag">1</span><p>建玉は<b>表ではなくカード</b>。横スクロールを起こさず、片手で上下に読める形にする。<span class="ids">UI-023 ／ PL-052</span></p></li>
+        <li><span class="tag">2</span><p>各建玉に<b>R進捗バー</b>を置き、損切りまでの距離を位置で示す。金額だけより状態が早く読める。<span class="ids">PL-032 ／ PL-052</span></p></li>
+        <li><span class="tag">3</span><p>戦略別の寄与を金額で分解する。不調な戦略を止める判断材料は、この画面から得られる必要がある。<span class="ids">PL-035 ／ DEC-022</span></p></li>
+        <li><span class="tag">4</span><p>資金曲線と最大ドローダウンを同じ視野に。5万円では金額が小さいため、<b>率と実行率</b>を併記して意味を持たせる。<span class="ids">PL-034 ／ FR-318</span></p></li>
+        <li><span class="tag">5</span><p>「全停止」は下部バーに常設。ただし押下時は確認を挟み、実際のクローズ発注は利用者が行う旨を明示する。<span class="ids">RM-024 ／ UI-025</span></p></li>
+        <li><span class="tag">6</span><p>プラスは赤、マイナスは青（日本の株式表示の慣行）。色だけに頼らず<b>符号と位置</b>でも判別できるようにする。<span class="ids">PL-051</span></p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ PC ============ -->
+  <section class="step">
+    <div class="step-head"><span class="step-no">PC</span><h2>PC — 突合と分析の場所</h2></div>
+    <p class="step-sub"><span class="dev">PC</span>同じPWAの広い画面。CSV取込・戦略管理・バックテストはここでしか行わない。</p>
+
+    <div class="pair wide">
+      <div class="desktop">
+        <div class="browserbar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="urlbar">short-trade.local / dashboard</span>
+        </div>
+        <div class="dhead">
+          <span class="appname">short-trade</span>
+          <span class="mode">実弾 ・ 5万円</span>
+          <span class="spacer"></span>
+          <span class="btn">CSV取込</span>
+          <span class="btn">戦略管理</span>
+          <span class="btn acc">バックテスト</span>
+          <span class="btn kill">■ 全停止</span>
+        </div>
+
+        <div class="dgrid">
+
+          <div class="dpane">
+            <div class="sect-label">本日の指示 ・ 9:00枠</div>
+            <div class="rows">
+              <div class="row"><div class="row-top"><span class="side stop" style="font-size:10px">損切</span><span class="nm">6758 ソニー</span><span class="pl" style="color:var(--muted); font-size:11px">1株</span></div>
+                <div class="row-sub"><span>発注済 6:34</span></div></div>
+              <div class="row"><div class="row-top"><span class="side buy" style="font-size:10px">買</span><span class="nm">4063 信越化学</span><span class="pl" style="color:var(--muted); font-size:11px">1株</span></div>
+                <div class="row-sub"><span>発注済 6:35</span></div></div>
+              <div class="row"><div class="row-top"><span class="side buy" style="font-size:10px">買</span><span class="nm">9432 NTT</span><span class="pl" style="color:var(--muted); font-size:11px">30株</span></div>
+                <div class="row-sub"><span>発注済 6:35</span></div></div>
+            </div>
+            <div class="sect-label">建玉 4件</div>
+            <div class="rows">
+              <div class="row"><div class="row-top"><span class="nm">7203 トヨタ</span><span class="pl up">+108</span></div><div class="row-sub"><span>2株 ・ 0.4R</span></div></div>
+              <div class="row"><div class="row-top"><span class="nm">9432 NTT</span><span class="pl up">+240</span></div><div class="row-sub"><span>40株 ・ 1.2R</span></div></div>
+              <div class="row"><div class="row-top"><span class="nm">8058 三菱商事</span><span class="pl up">+152</span></div><div class="row-sub"><span>2株 ・ 0.9R</span></div></div>
+              <div class="row"><div class="row-top"><span class="nm">6758 ソニー</span><span class="pl down">−61</span></div><div class="row-sub"><span>1株 ・ 損切り中</span></div></div>
+            </div>
+          </div>
+
+          <div class="dpane">
+            <div class="pnl-hero">
+              <div class="pnl-label">当日純損益（手数料・金利控除後）</div>
+              <div class="pnl-big up">+1,240<small style="font-size:15px"> 円</small></div>
+              <div class="pnl-sub"><span>実現 <b>+801</b></span><span>含み <b>+439</b></span><span>コスト <b>0</b></span><span>資産 <b>51,240</b></span><span class="prov">一部暫定</span></div>
+            </div>
+            <div class="chartbox">
+              <svg viewBox="0 0 460 150" role="img" aria-label="資金曲線とドローダウン。48,900円から51,240円まで推移し、最大ドローダウンは3.1%">
+                <line x1="34" y1="14" x2="454" y2="14" stroke="var(--line)" stroke-width="1"/>
+                <line x1="34" y1="52" x2="454" y2="52" stroke="var(--line)" stroke-width="1"/>
+                <line x1="34" y1="90" x2="454" y2="90" stroke="var(--line)" stroke-width="1"/>
+                <text x="0" y="17" font-size="9" fill="var(--faint)" font-family="monospace">51.5k</text>
+                <text x="0" y="55" font-size="9" fill="var(--faint)" font-family="monospace">50.0k</text>
+                <text x="0" y="93" font-size="9" fill="var(--faint)" font-family="monospace">48.5k</text>
+                <path d="M34 76 L64 71 L94 81 L124 66 L154 70 L184 56 L214 61 L244 46 L274 53 L304 38 L334 44 L364 31 L394 36 L424 22 L454 16"
+                      fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <path d="M34 76 L64 71 L94 81 L124 66 L154 70 L184 56 L214 61 L244 46 L274 53 L304 38 L334 44 L364 31 L394 36 L424 22 L454 16 L454 98 L34 98 Z"
+                      fill="var(--accent)" opacity="0.09"/>
+                <circle cx="454" cy="16" r="3.5" fill="var(--accent)"/>
+                <text x="0" y="118" font-size="9" fill="var(--faint)" font-family="monospace">DD</text>
+                <rect x="34" y="112" width="30" height="4" fill="var(--down)" opacity=".55"/>
+                <rect x="94" y="112" width="30" height="9" fill="var(--down)" opacity=".55"/>
+                <rect x="154" y="112" width="30" height="5" fill="var(--down)" opacity=".55"/>
+                <rect x="274" y="112" width="30" height="6" fill="var(--down)" opacity=".55"/>
+                <rect x="394" y="112" width="30" height="3" fill="var(--down)" opacity=".55"/>
+                <text x="34" y="140" font-size="9" fill="var(--faint)" font-family="monospace">8/14</text>
+                <text x="230" y="140" font-size="9" fill="var(--faint)" font-family="monospace">8/28</text>
+                <text x="420" y="140" font-size="9" fill="var(--faint)" font-family="monospace">9/11</text>
+              </svg>
+            </div>
+            <div class="chart-cap">
+              <span>最大DD <b>−3.1%</b></span><span>PF <b>1.42</b></span><span>勝率 <b>58%</b></span><span>平均R <b>+0.24</b></span><span>実行率 <b>94%</b></span>
+            </div>
+            <div class="dropzone">
+              <b>取引履歴CSVをここにドロップ</b>
+              最終取込 9月8日 ・ 3営業日前 ／ 取り込むと暫定計上が実約定値へ補正されます
+            </div>
+          </div>
+
+          <div class="dpane">
+            <div class="sect-label">戦略別成績 ・ 直近30日</div>
+            <div class="tablewrap">
+              <table>
+                <thead><tr><th>戦略</th><th>取引</th><th>平均R</th><th>純損益</th></tr></thead>
+                <tbody>
+                  <tr><td class="nmc">ST-04 SEPA</td><td>11</td><td>+0.41</td><td style="color:var(--up)">+1,820</td></tr>
+                  <tr><td class="nmc">ST-09 モメンタム</td><td>9</td><td>+0.28</td><td style="color:var(--up)">+1,140</td></tr>
+                  <tr><td class="nmc">ST-12 RSI2</td><td>14</td><td>+0.09</td><td style="color:var(--up)">+380</td></tr>
+                  <tr><td class="nmc">ST-17 分散逆張り</td><td>7</td><td>−0.18</td><td style="color:var(--down)">−580</td></tr>
+                  <tr><td class="nmc">ST-02 ボックス</td><td>4</td><td>−0.06</td><td style="color:var(--down)">−160</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="sect-label">見送りの機会損失</div>
+            <div class="tablewrap">
+              <table>
+                <thead><tr><th>日付</th><th>銘柄</th><th>理由</th><th>仮想</th></tr></thead>
+                <tbody>
+                  <tr><td class="nmc">9/04</td><td>7011</td><td>期限切れ</td><td style="color:var(--up)">+310</td></tr>
+                  <tr><td class="nmc">8/27</td><td>4519</td><td>見送り</td><td style="color:var(--down)">−90</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="chart-cap" style="padding-top:10px"><span>累計機会損失 <b style="color:var(--up)">+220円</b></span></div>
+          </div>
+
+        </div>
+      </div>
+
+      <ul class="notes" style="margin-top:32px">
+        <li><span class="tag">1</span><p>1画面で<b>指示・建玉／資金曲線／戦略別成績</b>を同時に見る。スマホで分割していた情報を横に並べるのがPCの役割。<span class="ids">UI-030</span></p></li>
+        <li><span class="tag">2</span><p>CSV取込はドラッグ＆ドロップ。<b>同じCSVを何度取り込んでも結果が変わらない</b>（冪等）ことを保証する。<span class="ids">UI-032 ／ FR-316 ／ FR-317</span></p></li>
+        <li><span class="tag">3</span><p>資金曲線の下にドローダウン帯を重ねる。5万円では金額の絶対値が小さいので、率で読む設計にする。<span class="ids">PL-034</span></p></li>
+        <li><span class="tag">4</span><p>戦略別成績は<b>平均Rで並べる</b>。動的ウェイトの調整根拠であり、成績が下限を割った戦略は自動停止の対象になる。<span class="ids">DEC-022 ／ RM-023</span></p></li>
+        <li><span class="tag">5</span><p>見送り・期限切れの<b>仮想成績</b>を独立したパネルで持つ。半自動の質を測る唯一の指標であり、隠すと改善できない。<span class="ids">FR-318</span></p></li>
+        <li><span class="tag">6</span><p>表はソート・フィルタ・CSVエクスポートに対応。スマホでは閲覧のみに留め、設定変更はPCへ寄せる。<span class="ids">UI-033 ／ UI-011 ／ UI-012</span></p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ closing ============ -->
+  <section class="close">
+    <h2>この設計が守っていること</h2>
+    <ul>
+      <li><b>本ツールはSBI証券のログイン情報を一切持たない。</b>発注は利用者がSBI証券 株アプリで行うため、画面上に認証情報を入力する箇所が存在しない。<code>NFR-070</code></li>
+      <li><b>通知から発注済み記録まで3タップ。</b>兼業で、通勤中に片手で操作することを前提に動線を組んだ。<code>FR-319 / UI-020</code></li>
+      <li><b>暫定値と確定値を混ぜない。</b>約定価格が未入力・CSV未取込の損益には必ず暫定バッジを付ける。<code>PL-046</code></li>
+      <li><b>実行率を成績と同じ場所に置く。</b>半自動では人が実行しないことが最大のリスクなので、見えない指標にしない。<code>FR-318</code></li>
+      <li><b>逆指値が置けない事実を隠さない。</b>論理ストップであること、ギャップ込みで想定損失を2倍に見積もっていることを画面上で明示する。<code>RM-001a / RM-001b</code></li>
+    </ul>
+
+    <div class="caveat">
+      <b>これはワイヤーフレームです。</b>数値・銘柄・価格はすべて画面構成を検討するための架空の例であり、実在の推奨や実績ではありません。
+      配色・余白・文字サイズは実装時に調整する前提の中間忠実度で、確定デザインではありません。
+      各項目の要求IDは <code>docs/15_UI要求とマルチデバイス対応.md</code> ほかに対応します。
+      S株の注文締切時刻（7:00 / 10:30 / 13:30）は公開情報に揺れがあるため、実装前に SBI証券の一次情報で確認します（<code>CR-070</code>）。
+    </div>
+  </section>
+
+</div>
