@@ -25,11 +25,26 @@ import pandas as pd
 import requests
 
 BASE = "https://api.jquants.com/v1"
-DEFAULT_CACHE = Path("data/jquants")
+# カレントディレクトリ相対にすると、別の場所から実行したときに CLI と読み書き先がずれる。
+# リポジトリ直下の data/jquants に固定する。
+DEFAULT_CACHE = Path(__file__).resolve().parents[2] / "data" / "jquants"
 
 
 class JQuantsError(RuntimeError):
     pass
+
+
+def _load_dotenv(path: Path | None = None) -> None:
+    """リポジトリ直下の .env を環境変数に読み込む（既にある変数は上書きしない）。"""
+    path = path or Path(__file__).resolve().parents[2] / ".env"
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
 @dataclass
@@ -40,6 +55,7 @@ class Credentials:
 
     @classmethod
     def from_env(cls) -> "Credentials":
+        _load_dotenv()
         c = cls(
             refresh_token=os.getenv("JQUANTS_REFRESH_TOKEN"),
             mail_address=os.getenv("JQUANTS_MAIL_ADDRESS"),

@@ -319,6 +319,8 @@ def run(
     """
     cfg = config or BacktestConfig.from_common(spec.common)
     warnings: list[str] = []
+    if not data:
+        raise ValueError("銘柄データが空です。fetch でデータを取得し、250本以上ある銘柄が存在することを確認してください")
     cleaned = {sym: validate_bars(sym, df) for sym, df in data.items()}
     for sym in data:
         dropped = len(data[sym]) - len(cleaned[sym])

@@ -1,5 +1,6 @@
 """コマンドライン。
 
+  python -m short_trade setup                     ブラウザで認証情報を入力 → 接続確認 → 取得 → 基準線まで自動
   python -m short_trade selfcheck                 仕様ファイルの検査（ネットワーク不要）
   python -m short_trade smoke --strategy ST-06    合成データで基盤の健全性を確認（ネットワーク不要）
   python -m short_trade fetch  --start 2015-01-01 --end 2025-12-31 --codes 7203,6758
@@ -27,6 +28,12 @@ def _specs(strategy_id: str | None = None):
         if not specs:
             raise SystemExit(f"戦略 {strategy_id} が見つかりません")
     return specs
+
+
+def cmd_setup(args) -> int:
+    from .setup_ui import serve
+    serve(port=args.port, open_browser=not args.no_browser)
+    return 0
 
 
 def cmd_selfcheck(args) -> int:
@@ -149,6 +156,11 @@ def cmd_backtest(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="short_trade", description="短期売買ツール")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    st = sub.add_parser("setup", help="ブラウザで認証情報を入力し、接続確認〜基準線まで自動実行")
+    st.add_argument("--port", type=int, default=8765)
+    st.add_argument("--no-browser", action="store_true")
+    st.set_defaults(func=cmd_setup)
 
     sub.add_parser("selfcheck", help="仕様ファイルの検査").set_defaults(func=cmd_selfcheck)
 
