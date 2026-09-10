@@ -1,0 +1,60 @@
+# データ源とライセンス条件の記録（DR-034）
+# 契約・実装の前に、必ず一次情報で条件を確認すること（docs/19 §19.7）
+version: 1
+updated: 2026-09-10
+
+sources:
+  - id: jquants_free
+    name: "J-Quants API（無料プラン）"
+    provider: "日本取引所グループ（JPX）"
+    url: "https://www.jpx.co.jp/markets/other-data-services/j-quants-api/"
+    used_for: [日足OHLCV, 上場銘柄一覧, 決算発表日, 四半期財務]
+    cost: "0円"
+    delay: "12週間"
+    usable_for_backtest: true
+    usable_for_live: false          # 12週遅延のため実運用には使えない
+    license_note: "個人向けサービス。利用規約を一次情報で確認のうえ契約する"
+    unverified:
+      - "遡れる期間（U-1）"
+      - "解約後のデータ保持可否（U-2）"
+      - "TOPIX指数の取得可否（U-3）"
+      - "レートリミット（U-4）"
+      - "決算発表の先行スケジュール取得可否（U-5）"
+
+  - id: jpx_listed_issues
+    name: "東証上場銘柄一覧（data_j.xls）"
+    provider: "日本取引所グループ（JPX）"
+    url: "https://www.jpx.co.jp/markets/statistics-equities/misc/01.html"
+    used_for: [銘柄マスタ]
+    cost: "0円"
+    delay: "月次"
+    usable_for_backtest: true
+    usable_for_live: true
+    license_note: >
+      「投資勧誘を目的としたものではなく、情報の完全性を保証しない」旨の注記あり。
+      自己の分析用途に限定して使用し、再配布しない。
+    retention: "各月末版を保存し、当時のユニバースを再現する（VR-004 生存者バイアス対策）"
+
+  - id: topix_proxy_1306
+    name: "TOPIX連動ETF（1306）の日足"
+    provider: "J-Quants 経由"
+    used_for: [レジーム判定の代用]
+    cost: "0円"
+    license_note: "TOPIX指数そのものが取得できない場合の代用。指数との誤差をバックテストで確認する"
+
+rejected:
+  - id: yfinance
+    name: "yfinance（Yahoo Finance）"
+    reason: >
+      Yahoo Finance は公式APIを提供しておらず、yfinance は事実上のスクレイピング。
+      Yahoo の利用規約は自動取得を制限しており、運用の土台にはしない（CR-023 / DR-021）。
+      検証段階でのデータ照合に限れば許容。
+
+  - id: scraping_broker_sites
+    name: "証券会社サイト・株式情報サイトのスクレイピング"
+    reason: "規約違反リスクと仕様変更による破綻リスク（docs/13 §13.1）"
+
+undecided:
+  - id: stooq
+    name: "stooq.com の日本株日足CSV"
+    note: "Phase 4 の実運用データ源の候補。ライセンス条件と分割調整の有無を確認する（U-6）"

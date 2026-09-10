@@ -1,0 +1,19 @@
+# 市場データはリポジトリにコミットしない（DR-033）
+/data/
+*.csv
+*.parquet
+*.xls
+*.xlsx
+!docs/**/*.csv
+
+# 認証情報（NFR-020）
+.env
+config/secrets.yaml
+config/credentials.*
+
+# 作業ファイル
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+.DS_Store
