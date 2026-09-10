@@ -2,5 +2,6 @@ pandas>=2.2
 numpy>=1.26
 pyyaml>=6.0
 requests>=2.31
+jquants-api-client>=2.6   # JPX公式クライアント（v2 APIキー方式）
 pyarrow>=15.0
 pytest>=8.0

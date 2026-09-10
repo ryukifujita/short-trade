@@ -79,7 +79,7 @@ def cmd_smoke(args) -> int:
 
 
 def cmd_fetch(args) -> int:
-    from .jquants import JQuantsClient, to_bars
+    from .jquants import JQuantsClient, to_bars, to_index
 
     client = JQuantsClient()
     if args.index:
@@ -87,10 +87,9 @@ def cmd_fetch(args) -> int:
         out.parent.mkdir(parents=True, exist_ok=True)
         if args.index.lower() == "topix":
             raw = client.topix(start=args.start, end=args.end)
-            if raw.empty:
-                raise SystemExit("TOPIX が取得できませんでした（無料プランでは不可の可能性。--index 1306 を試してください）")
-            df = raw.rename(columns={"Close": "close"})[["close"]].astype(float)
-            df.index = pd.to_datetime(raw["Date"])
+            if raw is None or raw.empty:
+                raise SystemExit("TOPIX が取得できませんでした（プランにより不可。--index 1306 を試してください）")
+            df = to_index(raw)
         else:
             df = to_bars(client.daily_quotes(code=args.index, start=args.start, end=args.end))[["close"]]
         df.sort_index().to_parquet(out)

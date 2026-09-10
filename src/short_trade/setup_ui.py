@@ -3,7 +3,7 @@
     python -m short_trade setup
 
 ブラウザに入力画面を開き、J-Quants の認証情報を受け取って次を全自動で行う:
-  1. 接続確認（認証 → 上場銘柄一覧 → 日足の最古日 → TOPIX の可否 → 決算発表日の可否）
+  1. 接続確認（APIキー → 上場銘柄一覧 → 日足の最古日 → TOPIX の可否 → 決算発表日の可否）
   2. 認証情報を .env に保存（リポジトリにはコミットされない。.gitignore 済み）
   3. 指数と代表銘柄の日足を取得してローカルに保存
   4. ST-06（ドンチャン）の基準線バックテストをスリッページ 0 / 0.1% で実行
@@ -54,8 +54,8 @@ def _save_env(values: dict[str, str]) -> None:
             if "=" in line and not line.lstrip().startswith("#"):
                 k, v = line.split("=", 1)
                 existing[k.strip()] = v.strip()
-    for k in ("JQUANTS_REFRESH_TOKEN", "JQUANTS_MAIL_ADDRESS", "JQUANTS_PASSWORD"):
-        existing.pop(k, None)
+    for k in ("JQUANTS_API_KEY", "JQUANTS_REFRESH_TOKEN", "JQUANTS_MAIL_ADDRESS", "JQUANTS_PASSWORD"):
+        existing.pop(k, None)   # 旧v1の残骸も消す
     existing.update({k: v for k, v in values.items() if v})
     ENV_PATH.write_text("".join(f"{k}={v}\n" for k, v in existing.items()), encoding="utf-8")
     try:
@@ -71,7 +71,7 @@ def _pipeline(creds: dict[str, str]) -> None:
     import pandas as pd
 
     from .backtest import BacktestConfig, run
-    from .jquants import Credentials, JQuantsClient, to_bars
+    from .jquants import Credentials, JQuantsClient, to_bars, to_index
     from .spec import load_all
 
     report: dict = {"checked_at": datetime.now().isoformat(timespec="seconds"), "unverified": {}}
@@ -79,13 +79,12 @@ def _pipeline(creds: dict[str, str]) -> None:
         # ---- 1) 接続確認 ----
         with _lock:
             _state["phase"] = "verify"
-        _log("認証しています…")
-        client = JQuantsClient(Credentials(**creds), cache_dir=ROOT / "data" / "jquants")
-        _ = client.id_token
-        _log("認証OK")
+        _log("APIキーで接続しています…")
+        client = JQuantsClient(Credentials(api_key=creds["api_key"]), cache_dir=ROOT / "data" / "jquants")
 
         _log("上場銘柄一覧を取得しています…")
         info = client.listed_info()
+        _log("接続OK")
         report["listed_count"] = int(len(info))
         report["listed_columns"] = list(map(str, info.columns))
         _log(f"上場銘柄一覧: {len(info)} 件")
@@ -100,6 +99,7 @@ def _pipeline(creds: dict[str, str]) -> None:
         _log(f"日足: {report['U-1_earliest_date']} 〜 {report['U-1_latest_date']}（約 {report['U-1_years']} 年）")
 
         _log("TOPIX 指数が取れるか試しています…")
+        topix = None
         try:
             topix = client.topix(start="2015-01-01")
             report["U-3_topix_available"] = bool(len(topix))
@@ -110,19 +110,17 @@ def _pipeline(creds: dict[str, str]) -> None:
 
         _log("決算発表予定が取れるか試しています…")
         try:
-            ann = client.announcement()
-            report["U-5_announcement_available"] = True
+            today = datetime.now().date()
+            ann = client.earnings_dates(start=str(today - pd.Timedelta(days=7)), end=str(today))
+            report["U-5_earnings_date_available"] = bool(len(ann))
             report["U-5_rows"] = int(len(ann))
+            report["U-5_columns"] = list(map(str, ann.columns))[:12]
         except Exception as e:
-            report["U-5_announcement_available"] = False
+            report["U-5_earnings_date_available"] = False
             report["U-5_error"] = str(e)[:200]
 
         # ---- 2) 保存 ----
-        _save_env({
-            "JQUANTS_REFRESH_TOKEN": creds.get("refresh_token") or "",
-            "JQUANTS_MAIL_ADDRESS": creds.get("mail_address") or "",
-            "JQUANTS_PASSWORD": creds.get("password") or "",
-        })
+        _save_env({"JQUANTS_API_KEY": creds.get("api_key") or ""})
         _log(f"認証情報を {ENV_PATH.name} に保存しました（gitignore 済み）")
 
         # ---- 3) 取得 ----
@@ -131,8 +129,7 @@ def _pipeline(creds: dict[str, str]) -> None:
         index_out = ROOT / "data" / "jquants" / "index.parquet"
         index_out.parent.mkdir(parents=True, exist_ok=True)
         if report["U-3_topix_available"]:
-            df = topix.rename(columns={"Close": "close"})[["close"]].astype(float)
-            df.index = pd.to_datetime(topix["Date"])
+            df = to_index(topix)
             report["index_used"] = "TOPIX"
         else:
             df = to_bars(client.daily_quotes(code="1306", start="2008-01-01"))[["close"]]
@@ -205,19 +202,18 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px
 
 _FORM = f"""<!doctype html><meta charset="utf-8"><title>short-trade セットアップ</title><style>{_CSS}</style>
 <h1>J-Quants の接続設定</h1>
-<p class="lead">入力すると、接続確認 → 保存 → データ取得 → 基準線バックテストまで自動で進みます。</p>
+<p class="lead">APIキーを貼るだけです。接続確認 → 保存 → データ取得 → 基準線バックテストまで自動で進みます。</p>
 <form method="post" action="/start">
-<fieldset><legend>方法A（推奨）リフレッシュトークン</legend>
-<label>JQUANTS_REFRESH_TOKEN</label>
-<input name="refresh_token" autocomplete="off" placeholder="J-Quants のダッシュボードで表示される長い文字列">
-<div class="note">他のツールで既に使っているものをそのまま貼れます。有効期限は1週間。切れたらこの画面で貼り直してください。</div>
-</fieldset>
-<fieldset><legend>方法B メールアドレスとパスワード（Aが分からないとき）</legend>
-<label>メールアドレス</label><input name="mail" autocomplete="off">
-<label>パスワード</label><input name="password" type="password" autocomplete="off">
+<fieldset><legend>APIキー</legend>
+<label>JQUANTS_API_KEY</label>
+<input name="api_key" autocomplete="off" placeholder="ダッシュボードの「APIキー」に表示されている文字列">
+<div class="note">
+J-Quants にログイン → ダッシュボード → <b>APIキー</b> の欄に表示されているものです。<br>
+他のツールで使っているものをそのまま貼れます。<b>有効期限はありません</b>（1週間で切れるのは旧方式のトークンで、そちらは廃止済みです）。
+</div>
 </fieldset>
 <button type="submit">接続を確認して、続きを自動で進める</button>
-<p class="note">保存先はこのフォルダの <code>.env</code>（Git には入りません）。入力内容はこのPCの外に送られません（J-Quants への認証を除く）。</p>
+<p class="note">保存先はこのフォルダの <code>.env</code>（Git には入りません）。入力内容はこのPCの外に送られません（J-Quants への接続を除く）。</p>
 </form>"""
 
 
@@ -247,7 +243,7 @@ def _result_html(report: dict) -> str:
         ("U-1 日足の最古日", f"{report.get('U-1_earliest_date')}（約 {report.get('U-1_years')} 年）"),
         ("U-1 日足の最新日", f"{report.get('U-1_latest_date')}（無料プランは12週遅延）"),
         ("U-3 TOPIX 指数", yn(report.get("U-3_topix_available")) + f" → 使用: {report.get('index_used')}"),
-        ("U-5 決算発表予定", yn(report.get("U-5_announcement_available"))),
+        ("U-5 決算発表予定日", yn(report.get("U-5_earnings_date_available"))),
         ("取得した銘柄", f"{report.get('fetched_symbols')} / {len(SEED_CODES)}"),
     ]
     tbl = "".join(f"<tr><th>{html.escape(k)}</th><td>{v}</td></tr>" for k, v in rows)
@@ -299,13 +295,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         length = int(self.headers.get("Content-Length", "0"))
         form = parse_qs(self.rfile.read(length).decode("utf-8"))
-        creds = {
-            "refresh_token": form.get("refresh_token", [""])[0].strip() or None,
-            "mail_address": form.get("mail", [""])[0].strip() or None,
-            "password": form.get("password", [""])[0] or None,
-        }
-        if not creds["refresh_token"] and not (creds["mail_address"] and creds["password"]):
-            self._send(_FORM.replace("<form", '<p class="ng">リフレッシュトークンか、メールアドレス＋パスワードのどちらかを入力してください。</p><form'))
+        creds = {"api_key": form.get("api_key", [""])[0].strip() or None}
+        if not creds["api_key"]:
+            self._send(_FORM.replace("<form", '<p class="ng">APIキーを入力してください。</p><form'))
             return
         with _lock:
             if _state["phase"] in ("verify", "fetch", "backtest"):

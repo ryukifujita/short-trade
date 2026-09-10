@@ -16,31 +16,31 @@ from synthetic import make_bars
 
 
 def _jq_frame(n=1500, start="2016-01-04"):
-    """J-Quants の daily_quotes と同じ列名で返す（to_bars の想定スキーマの検査を兼ねる）。"""
+    """J-Quants v2 の /equities/bars/daily と同じ列名で返す。
+
+    列名は jquantsapi.constants.EQ_BARS_DAILY_COLUMNS_V2 に合わせている。
+    to_bars がこのスキーマを正しく読めるかの検査を兼ねる。
+    """
     bars = make_bars([100 * (1.0004 ** i) * (1 + 0.01 * np.sin(i / 7)) for i in range(n)], start=start)
     return pd.DataFrame({
         "Date": bars.index.strftime("%Y-%m-%d"),
         "Code": "72030",
-        "Open": bars["open"], "High": bars["high"], "Low": bars["low"], "Close": bars["close"],
-        "Volume": bars["volume"],
-        "AdjustmentOpen": bars["open"], "AdjustmentHigh": bars["high"], "AdjustmentLow": bars["low"],
-        "AdjustmentClose": bars["close"], "AdjustmentVolume": bars["volume"],
+        "O": bars["open"], "H": bars["high"], "L": bars["low"], "C": bars["close"],
+        "Vo": bars["volume"], "Va": bars["close"] * bars["volume"], "AdjFactor": 1.0,
+        "AdjO": bars["open"], "AdjH": bars["high"], "AdjL": bars["low"],
+        "AdjC": bars["close"], "AdjVo": bars["volume"],
     }).reset_index(drop=True)
 
 
 class FakeClient:
     def __init__(self, credentials=None, **kw):
         self.credentials = credentials
-        if not (credentials and (credentials.refresh_token or credentials.mail_address)):
-            raise jquants.JQuantsError("認証情報が見つかりません")
+        if not (credentials and credentials.api_key):
+            raise jquants.JQuantsError("APIキーが見つかりません")
         self.cache_dir = Path(kw.get("cache_dir", "data/jquants"))
 
-    @property
-    def id_token(self):
-        return "fake"
-
     def listed_info(self, on=None):
-        return pd.DataFrame({"Code": ["72030", "67580"], "CompanyName": ["A", "B"], "MarketCode": ["0111", "0111"]})
+        return pd.DataFrame({"Code": ["72030", "67580"], "CoName": ["A", "B"], "Mkt": ["0111", "0111"]})
 
     def daily_quotes(self, *, code=None, on=None, start=None, end=None):
         return _jq_frame()
@@ -53,10 +53,10 @@ class FakeClient:
         return df
 
     def topix(self, *, start=None, end=None):
-        raise jquants.JQuantsError("HTTP 403 (無料プランでは不可)")
+        raise jquants.JQuantsError("TOPIX の取得が失敗しました（プランにより不可）")
 
-    def announcement(self):
-        return pd.DataFrame({"Date": ["2026-09-11"], "Code": ["72030"]})
+    def earnings_dates(self, *, start=None, end=None):
+        return pd.DataFrame({"PubDate": ["2026-09-10"], "SchDate": ["2026-09-11"], "Code": ["72030"]})
 
 
 @pytest.fixture
@@ -94,19 +94,19 @@ def _post(url, data: dict):
 def test_form_is_served(sandbox):
     url, _ = sandbox
     html = urllib.request.urlopen(url).read().decode()
-    assert "JQUANTS_REFRESH_TOKEN" in html and "接続を確認" in html
+    assert "JQUANTS_API_KEY" in html and "接続を確認" in html
 
 
 def test_empty_submission_is_rejected(sandbox):
     url, root = sandbox
-    r = _post(url + "/start", {"refresh_token": "", "mail": "", "password": ""})
-    assert r.status == 200 and "どちらかを入力" in r.read().decode()
+    r = _post(url + "/start", {"api_key": ""})
+    assert r.status == 200 and "APIキーを入力してください" in r.read().decode()
     assert not (root / ".env").exists()
 
 
 def test_full_pipeline_with_fake_client(sandbox):
     url, root = sandbox
-    r = _post(url + "/start", {"refresh_token": "TESTTOKEN123", "mail": "", "password": ""})
+    r = _post(url + "/start", {"api_key": "TESTKEY123"})
     assert r.status == 303
     deadline = time.time() + 60
     status = {}
@@ -119,7 +119,7 @@ def test_full_pipeline_with_fake_client(sandbox):
 
     # .env に保存され、権限が所有者のみ
     env = (root / ".env").read_text()
-    assert "JQUANTS_REFRESH_TOKEN=TESTTOKEN123" in env
+    assert "JQUANTS_API_KEY=TESTKEY123" in env
     if os.name != "nt":
         assert oct(os.stat(root / ".env").st_mode & 0o777) == "0o600"
 
@@ -127,7 +127,46 @@ def test_full_pipeline_with_fake_client(sandbox):
     report = json.loads((root / "data" / "setup_report.json").read_text())
     assert report["U-1_earliest_date"] == "2016-01-04"
     assert report["U-3_topix_available"] is False and "1306" in report["index_used"]
+    assert report["U-5_earnings_date_available"] is True
     assert "slippage_0.0" in report["baseline"] and "slippage_0.1" in report["baseline"]
-    assert "TESTTOKEN123" not in json.dumps(report)
-    assert "TESTTOKEN123" not in "\n".join(status["log"])
+    assert "TESTKEY123" not in json.dumps(report)
+    assert "TESTKEY123" not in "\n".join(status["log"])
     assert "完了" in status["result_html"]
+
+
+def test_to_bars_matches_official_v2_schema():
+    """公式クライアントが返す列名（EQ_BARS_DAILY_COLUMNS_V2）を to_bars が読めること。
+
+    ライブラリ側の仕様変更をここで検知する。V1 の列名を前提にしていたのが
+    403 の遠因だったので、スキーマは推測せず公式定義に突き合わせる。
+    """
+    from jquantsapi import constants
+    from short_trade.jquants import to_bars
+
+    official = set(constants.EQ_BARS_DAILY_COLUMNS_V2)
+    used = {"Date", "AdjO", "AdjH", "AdjL", "AdjC", "AdjVo", "O", "H", "L", "C", "Vo"}
+    assert used <= official, f"公式の列定義に無い列を使っている: {used - official}"
+
+    bars = to_bars(_jq_frame(n=30))
+    assert list(bars.columns) == ["open", "high", "low", "close", "volume"]
+    assert len(bars) == 30 and bars.index.is_monotonic_increasing
+
+
+def test_to_bars_falls_back_to_unadjusted_columns():
+    from short_trade.jquants import to_bars
+    raw = _jq_frame(n=10).drop(columns=["AdjO", "AdjH", "AdjL", "AdjC", "AdjVo"])
+    assert len(to_bars(raw)) == 10
+
+
+def test_to_bars_reports_actual_columns_on_schema_change():
+    from short_trade.jquants import JQuantsError, to_bars
+    raw = _jq_frame(n=5).rename(columns={"AdjC": "Close", "C": "Cx"})
+    with pytest.raises(JQuantsError, match="実際の列"):
+        to_bars(raw)
+
+
+def test_to_earnings_map_normalises_five_digit_codes():
+    from short_trade.jquants import to_earnings_map
+    raw = pd.DataFrame({"PubDate": ["2026-09-01"], "SchDate": ["2026-09-11"], "Code": ["72030"]})
+    m = to_earnings_map(raw)
+    assert list(m) == ["7203"] and m["7203"][0] == pd.Timestamp("2026-09-11")

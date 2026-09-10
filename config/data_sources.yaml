@@ -13,13 +13,16 @@ sources:
     delay: "12週間"
     usable_for_backtest: true
     usable_for_live: false          # 12週遅延のため実運用には使えない
+    api_version: "v2"
+    auth: "APIキーを x-api-key ヘッダに指定（v1のトークン方式は2026-06-01に廃止。docs/23）"
+    client: "jquants-api-client（JPX公式）の ClientV2 を使用。エンドポイントを自前で持たない"
     license_note: "個人向けサービス。利用規約を一次情報で確認のうえ契約する"
     unverified:
       - "遡れる期間（U-1）"
       - "解約後のデータ保持可否（U-2）"
       - "TOPIX指数の取得可否（U-3）"
       - "レートリミット（U-4）"
-      - "決算発表の先行スケジュール取得可否（U-5）"
+      - "決算発表予定日の取得可否（U-5）"
 
   - id: jpx_listed_issues
     name: "東証上場銘柄一覧（data_j.xls）"
