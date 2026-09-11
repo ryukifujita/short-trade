@@ -6,9 +6,9 @@ cd "$(dirname "$0")/.." || exit 1
 echo "==============================================="
 echo " short-trade 比較レポート"
 echo "==============================================="
+ensure_python               # 更新の展開に Python を使うので先に確認する
 self_update
 . scripts/common.sh          # 更新後の定義を読み直す
-ensure_python
 ensure_venv
 if [ ! -f ".env" ]; then
   echo ""

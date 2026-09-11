@@ -244,3 +244,23 @@ def test_unrelated_error_is_not_swallowed_by_clamp():
     c._client = Inner()
     with pytest.raises(JQuantsError, match="500"):
         c.daily_quotes(code="7203", start="2008-01-01")
+
+
+def test_server_falls_back_to_next_free_port():
+    """前回の画面が同じポートを掴んでいても、次の空きポートで立ち上がる。"""
+    import socket
+    from short_trade.setup_ui import make_server
+
+    blocker = socket.socket()
+    blocker.bind(("127.0.0.1", 0))
+    blocker.listen(1)
+    busy = blocker.getsockname()[1]
+    try:
+        srv = make_server(busy, attempts=5)
+        try:
+            assert srv.server_address[1] != busy
+            assert busy < srv.server_address[1] < busy + 5
+        finally:
+            srv.server_close()
+    finally:
+        blocker.close()

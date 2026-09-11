@@ -318,9 +318,27 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+def make_server(port: int = 8765, *, attempts: int = 20) -> HTTPServer:
+    """指定ポートが使用中なら、続く番号を順に試す。
+
+    前回の黒い画面が開いたままだと同じポートを取り合って `Address already in use` になる。
+    利用者に「前の画面を閉じて」と頼むより、こちらが空きを探すほうが確実。
+    """
+    last: OSError | None = None
+    for p in range(port, port + attempts):
+        try:
+            return HTTPServer(("127.0.0.1", p), _Handler)
+        except OSError as e:
+            last = e
+    raise OSError(f"{port}〜{port + attempts - 1} のポートがすべて使用中です。前回の黒い画面を閉じてから再実行してください") from last
+
+
 def serve(port: int = 8765, open_browser: bool = True) -> None:
-    server = HTTPServer(("127.0.0.1", port), _Handler)
-    url = f"http://127.0.0.1:{port}/"
+    server = make_server(port)
+    actual = server.server_address[1]
+    url = f"http://127.0.0.1:{actual}/"
+    if actual != port:
+        print(f"（ポート {port} は前回の画面が使用中のため、{actual} を使います）")
     print(f"セットアップ画面を開きます: {url}")
     print("終了するには Ctrl+C")
     if open_browser:

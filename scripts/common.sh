@@ -29,12 +29,26 @@ ensure_venv() {
     echo "【エラー】部品のインストールに失敗しました。上のメッセージを貼って報告してください。"; pause_exit 1; }
 }
 
+extract_zip() {
+  # macOS 標準の unzip は日本語ファイル名を壊して "write error (disk full?)" と対話プロンプトで止まる。
+  # bsdtar（macOS の tar）は UTF-8 の zip を正しく展開できるので、そちらを先に試す。
+  local zip="$1" dest="$2"
+  # Python の zipfile は UTF-8 フラグ付き zip（GitHub 製）の日本語名を正しく復元する。最優先
+  if command -v python3 >/dev/null 2>&1 && \
+     python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$zip" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  if tar -xf "$zip" -C "$dest" 2>/dev/null; then return 0; fi
+  if command -v ditto >/dev/null 2>&1 && ditto -x -k "$zip" "$dest" 2>/dev/null; then return 0; fi
+  unzip -qo "$zip" -d "$dest" </dev/null >/dev/null 2>&1
+}
+
 self_update() {
   # GitHub から最新のコードを取り、状態ファイル以外を入れ替える。失敗しても続行する。
   command -v curl >/dev/null 2>&1 || { echo "（curl が無いため更新をスキップ）"; return 0; }
   local tmp; tmp="$(mktemp -d)" || return 0
   echo "コードを最新にしています..."
-  if curl -fsSL --max-time 90 "$ZIP_URL" -o "$tmp/code.zip" && unzip -q "$tmp/code.zip" -d "$tmp"; then
+  if curl -fsSL --max-time 90 "$ZIP_URL" -o "$tmp/code.zip" && extract_zip "$tmp/code.zip" "$tmp"; then
     local src; src="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d -name 'short-trade-*' | head -1)"
     if [ -n "$src" ]; then
       for item in $UPDATE_ITEMS; do
