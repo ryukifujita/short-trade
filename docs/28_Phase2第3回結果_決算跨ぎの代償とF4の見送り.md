@@ -132,12 +132,16 @@ VCP 検出器の再計算を `compare` の格子内で共有するようにし�
 | `compare` に方針比較の行（最大スリッページでのみ） | `cli.cmd_compare --earnings-policies` |
 | 検出器のメモ化 | `backtest._bind_detectors` |
 | ユニバース拡張ランチャー | `expand_mac.command`, `expand_windows.bat`, `scripts/expand.sh`, `scripts/expand.bat` |
-| テスト 93 → 99 | `tests/test_review_regressions.py`, `tests/test_cli_compare.py` |
+| 自己更新を「一覧に基づく入れ替え」から「状態ファイル以外を全部入れ替え」に変更。加えて CLI 起動時に足りない起動ファイルを補う | `scripts/common.sh`, `src/short_trade/launchers.py` |
+| テスト 93 → 101 | `tests/test_review_regressions.py`, `tests/test_cli_compare.py`, `tests/test_launchers.py` |
 
 ## 28.7 次にやること
 
 **利用者**（順番どおりに）:
 
+0. **`run_mac.command` を一度開く。** `expand_mac.command` は今回追加したファイルなので、手元の ZIP には無い。
+   `run_mac.command` を開くと自己更新で降りてくる（フォルダに `expand_mac.command` が現れる）。
+   このとき 30 銘柄・5 戦略・決算方針 3 つの比較も走る（数分）。その結果も貼ってよい。
 1. `expand_mac.command` を開く（1回だけ。数分〜十数分）。
 2. `run_mac.command` を開く（10〜20 分）。
 3. `data` の `compare_report.json`・`correlation_report.json`・`funnel_report.json` を貼る。

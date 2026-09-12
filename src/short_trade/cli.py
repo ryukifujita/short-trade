@@ -457,4 +457,9 @@ def main(argv: list[str] | None = None) -> int:
     b.set_defaults(func=cmd_backtest)
 
     args = p.parse_args(argv)
+    # 足りない起動ファイル（expand_mac.command 等）を補う。自己更新の一覧に無い新しい
+    # スタブは初回の更新で降りてこないため（launchers.py 参照）
+    from .launchers import ensure_launchers
+    for name in ensure_launchers():
+        print(f"起動ファイルを追加しました: {name}")
     return args.func(args)

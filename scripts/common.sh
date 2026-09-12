@@ -51,13 +51,17 @@ self_update() {
   if curl -fsSL --max-time 90 "$ZIP_URL" -o "$tmp/code.zip" && extract_zip "$tmp/code.zip" "$tmp"; then
     local src; src="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d -name 'short-trade-*' | head -1)"
     if [ -n "$src" ]; then
-      for item in $UPDATE_ITEMS; do
-        if [ -e "$src/$item" ]; then
-          rm -rf "./$item.new"
-          cp -R "$src/$item" "./$item.new"
-          rm -rf "./$item"
-          mv "./$item.new" "./$item"      # rename は実行中のスクリプトにも安全
-        fi
+      # ZIP にある最上位の項目をすべて入れ替える。状態ファイル（.env / .venv / data）だけは触らない。
+      # （以前は UPDATE_ITEMS の一覧に基づいていたが、一覧に無い新しいファイルが初回の更新で
+      #   降りてこなかった。一覧は互換のため残す）
+      for path in "$src"/* "$src"/.[!.]*; do
+        [ -e "$path" ] || continue
+        item="$(basename "$path")"
+        case "$item" in .env|.venv|data|*.new) continue ;; esac
+        rm -rf "./$item.new"
+        cp -R "$path" "./$item.new"
+        rm -rf "./$item"
+        mv "./$item.new" "./$item"      # rename は実行中のスクリプトにも安全
       done
       chmod +x ./*.command ./scripts/*.sh 2>/dev/null
       echo "コードを最新にしました（APIキー・データ・環境はそのまま）"
