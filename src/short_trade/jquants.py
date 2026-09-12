@@ -115,6 +115,27 @@ class JQuantsClient:
         """
         return self._call("上場銘柄一覧の取得", self.client.get_list, date_yyyymmdd=_ymd(on))
 
+    def universe_snapshot(self, on: str, *, lookahead_days: int = 7) -> pd.DataFrame:
+        """ある日付時点の全銘柄の時価総額と市場区分（VR-004 の時点ユニバース用）。
+
+        on が休日なら直後の営業日まで最大 lookahead_days 日ずらす。
+        返り値の列: Code, MktCap, MktNm, CoName, Date
+        """
+        import datetime as _dt
+
+        d0 = pd.Timestamp(on).date()
+        for k in range(lookahead_days + 1):
+            day = (d0 + _dt.timedelta(days=k)).strftime("%Y-%m-%d")
+            snap = self.daily_quotes(on=day)
+            if snap is not None and not snap.empty and "MktCap" in snap.columns:
+                info = self.listed_info(on=day)
+                cols = [c for c in ("Code", "CoName", "MktNm") if c in info.columns]
+                merged = snap.merge(info[cols], on="Code", how="left") if cols else snap
+                merged = merged.dropna(subset=["MktCap"])
+                merged["Date"] = day
+                return merged
+        return pd.DataFrame()
+
     def coverage(self, *, probe_code: str = "7203") -> tuple[str, str | None]:
         """契約が覆う日付範囲 (開始日, 終了日) を確定する。
 

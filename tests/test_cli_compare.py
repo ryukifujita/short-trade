@@ -125,14 +125,15 @@ def test_compare_adds_earnings_policy_rows_only_when_earnings_exist(cache):
                      earnings_policies="entry_only,cushion", equity=1_000_000, start=None, end=None)
     cli.cmd_compare(args)
     rows = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())["results"]["ST-06"]
-    assert len(rows) == 2 and all(r["earnings_policy"] == "exit" for r in rows)   # 決算日なし → 方針の行は出ない
+    default_policy = load_all(CATALOG)[0].common["risk"]["earnings_policy"]
+    assert len(rows) == 2 and all(r["earnings_policy"] == default_policy for r in rows)   # 決算日なし → 方針の行は出ない
 
     pd.DataFrame({"PubDate": ["2024-06-01"], "SchDate": ["2024-06-10"], "Code": ["11110"]}).to_parquet(cli.EARNINGS_PATH)
     cli.cmd_compare(args)
     rows = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())["results"]["ST-06"]
     assert len(rows) == 4
     assert [(r["slippage_pct"], r["earnings_policy"]) for r in rows] == [
-        (0.0, "exit"), (0.1, "exit"), (0.1, "entry_only"), (0.1, "cushion")]
+        (0.0, default_policy), (0.1, default_policy), (0.1, "entry_only"), (0.1, "cushion")]
 
 
 def test_detector_memo_returns_same_frame_for_same_bars():

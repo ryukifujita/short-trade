@@ -96,7 +96,7 @@ def _r(v) -> float | None:
 
 def measure(specs: list[StrategySpec], data: dict[str, pd.DataFrame], *,
             index: pd.DataFrame | None, equity: float = 10_000_000.0,
-            earnings=None) -> CorrelationReport:
+            earnings=None, membership=None) -> CorrelationReport:
     curves: dict[str, pd.Series] = {}
     entries: dict[str, set[tuple[str, pd.Timestamp]]] = {}
     metrics: dict[str, dict] = {}
@@ -113,6 +113,7 @@ def measure(specs: list[StrategySpec], data: dict[str, pd.DataFrame], *,
                       config=BacktestConfig.from_common(spec.common, initial_equity=equity,
                                                         slippage_pct=0.0, earnings_dates=earnings,
                                                         risk_pct_override=MEASURE_RISK_PCT,
+                                                        universe_membership=membership,
                                                         max_position_pct=100.0, max_portfolio_heat_pct=100.0,
                                                         max_positions=10_000, daily_loss_limit_pct=None,
                                                         drawdown_derisk=[]))

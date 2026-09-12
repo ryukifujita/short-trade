@@ -4,7 +4,7 @@
 cd "$(dirname "$0")/.." || exit 1
 . scripts/common.sh
 echo "==============================================="
-echo " short-trade ユニバース拡張（300銘柄）"
+echo " short-trade ユニバース拡張（時点ユニバース 300銘柄）"
 echo "==============================================="
 ensure_python
 self_update
@@ -17,8 +17,8 @@ if [ ! -f ".env" ]; then
 fi
 export PYTHONPATH=src
 echo ""
-echo "プライム市場の時価総額上位 300 銘柄の日足を取得します（数分〜十数分。1回だけ）..."
-./.venv/bin/python -m short_trade fetch --universe --market プライム --top 300 || pause_exit 1
+echo "毎年の基準日ごとに「その時点の」プライム（旧・市場第一部）時価総額上位 300 銘柄を選び、和集合の日足を取得します（数分〜十数分）..."
+./.venv/bin/python -m short_trade fetch --universe-pit --every 12 --market プライム --top 300 || pause_exit 1
 echo ""
 echo "追加した銘柄の決算発表予定日を取得します..."
 ./.venv/bin/python -m short_trade fetch --earnings || echo "（決算日の取得に失敗。次回 run_mac.command で再試行します）"

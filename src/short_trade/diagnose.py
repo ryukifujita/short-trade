@@ -63,7 +63,7 @@ def funnel(spec: StrategySpec, data: dict[str, pd.DataFrame], *,
         ns = symbol_namespace(spec, sym, df, index, xranks)
         flags: list[pd.Series] = []
         first = not labels
-        for text, flag in universe_filters(cfg, df):
+        for text, flag in universe_filters(cfg, df, sym):
             if first:
                 labels.append(("universe", text))
             flags.append(flag.astype(bool))

@@ -9,7 +9,7 @@
   python -m short_trade compare                    キャッシュからリスク率×スリッページの比較表を出す
   python -m short_trade correlate                  Phase 2 の戦略間の相関を測る（VR-045）
   python -m short_trade funnel --strategy ST-04    条件ファネル（取引が少ない戦略の診断）
-  python -m short_trade fetch --universe --top 300 上場銘柄一覧＋時価総額で上位 N 銘柄を取得
+  python -m short_trade fetch --universe-pit --top 300  時点ユニバース（基準日ごとの上位 N の和集合）を取得
 """
 from __future__ import annotations
 
@@ -29,6 +29,19 @@ CATALOG = ROOT / "catalog"
 DATA = ROOT / "data" / "jquants"
 EARNINGS_PATH = DATA / "earnings.parquet"
 EARNINGS_PROGRESS = DATA / "earnings_progress.json"
+UNIVERSE_PIT_PATH = DATA / "universe_pit.json"
+
+# 市場区分の名前は 2022-04 の再編で変わった（市場第一部 → プライム）。両方を「主力市場」として扱う
+_PRIME_LIKE = ("プライム", "第一部", "Prime", "First Section")
+
+
+def _load_membership() -> dict | None:
+    """時点ユニバース（fetch --universe-pit の出力）を {Timestamp: set(codes)} で読む。無ければ None。"""
+    import json
+    if not UNIVERSE_PIT_PATH.exists():
+        return None
+    raw = json.loads(UNIVERSE_PIT_PATH.read_text(encoding="utf-8"))
+    return {pd.Timestamp(d): set(codes) for d, codes in raw.get("members", {}).items()}
 
 
 def _earnings_coverage(data: dict, earnings) -> str:
@@ -125,6 +138,8 @@ def cmd_fetch(args) -> int:
 
     client = JQuantsClient()
     start = args.start or client.coverage()[0]      # 省略時は契約が覆う最古日から
+    if getattr(args, "universe_pit", False):
+        return _fetch_universe_pit(client, start, args)
     if args.universe:
         import json as _json
 
@@ -195,6 +210,71 @@ def cmd_fetch(args) -> int:
     return 0
 
 
+def _select_prime_like(snap: pd.DataFrame, market: str | None) -> pd.DataFrame:
+    """市場区分で絞る。'プライム' 指定は再編前の '市場第一部' も含める。空文字なら全市場。"""
+    if not market or "MktNm" not in snap.columns:
+        return snap
+    names = _PRIME_LIKE if market == "プライム" else (market,)
+    col = snap["MktNm"].astype(str)
+    hit = pd.Series(False, index=snap.index)
+    for n in names:
+        hit |= col.str.contains(n, na=False)
+    return snap[hit] if hit.any() else snap
+
+
+def _fetch_universe_pit(client, start: str, args) -> int:
+    """時点ユニバース（VR-004）: 基準日ごとに「その時点の」時価総額上位 N を選び、和集合の日足を取る。
+
+    今日の上位 300 だけを使うと「今日まで生き残って大きくなった銘柄」だけを検証することになり、
+    上昇した銘柄を買う戦略（F1/F3）は実力以上に見える（docs/29 §29.3）。
+    基準日 t の集合は次の基準日の前日まで有効（backtest.membership_flag）。上場廃止銘柄も和集合に残り、
+    データが途切れた時点で強制手仕舞いされる。
+    """
+    import json as _json
+    from datetime import date
+
+    from .jquants import normalize_code, to_bars
+
+    every = int(getattr(args, "every", 12) or 12)
+    dates = [d.strftime("%Y-%m-%d") for d in pd.date_range(start, date.today(), freq=f"{every}MS")]
+    if not dates or dates[0] > start:
+        dates = [start] + dates
+    members: dict[str, list[str]] = {}
+    names: dict[str, str] = {}
+    print(f"時点ユニバースを {len(dates)} 基準日で作ります（{every} か月ごと、{args.market or '全市場'} 時価総額上位 {args.top}）…")
+    for d in dates:
+        snap = client.universe_snapshot(d)
+        if snap.empty:
+            print(f"  {d}: 取得できず（休日が続くか、契約範囲外）。この基準日は飛ばします")
+            continue
+        chosen = _select_prime_like(snap, args.market).sort_values("MktCap", ascending=False).head(args.top)
+        codes = [normalize_code(c) for c in chosen["Code"]]
+        members[str(snap["Date"].iloc[0])] = codes
+        if "CoName" in chosen.columns:
+            names.update({normalize_code(c): str(n) for c, n in zip(chosen["Code"], chosen["CoName"])})
+        print(f"  {snap['Date'].iloc[0]}: {len(codes)} 銘柄（市場区分の例: {', '.join(map(str, chosen.get('MktNm', pd.Series(dtype=str)).dropna().unique()[:3]))}）")
+    if not members:
+        raise SystemExit("時点ユニバースを1つも作れませんでした")
+    union = sorted({c for codes in members.values() for c in codes})
+    DATA.mkdir(parents=True, exist_ok=True)
+    UNIVERSE_PIT_PATH.write_text(_json.dumps(
+        {"every_months": every, "market": args.market, "top": args.top, "members": members, "names": names},
+        ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"和集合 {len(union)} 銘柄の日足を取得します（取得済みは飛ばします）…")
+    ok = failed = 0
+    for i, code in enumerate(union, 1):
+        try:
+            bars = to_bars(client.cached_daily_quotes(code, start=start, end=None))
+            ok += 1 if len(bars) else 0
+        except Exception as e:
+            failed += 1
+            print(f"  {code}: 失敗 {str(e)[:80]}")
+        if i % 50 == 0 or i == len(union):
+            print(f"  [{i}/{len(union)}] 取得済み {ok}")
+    print(f"完了: {ok} 銘柄（失敗 {failed}）。{UNIVERSE_PIT_PATH.relative_to(ROOT)} に基準日ごとの所属を保存しました")
+    return 0
+
+
 def _fetch_earnings(client, start: str, end: str | None, *, max_age_days: int = 1) -> int:
     """決算発表予定日を **キャッシュ済み銘柄ごとに** 取る（差分更新・再開可能）。
 
@@ -255,7 +335,8 @@ def cmd_backtest(args) -> int:
         print(f"注意: 履歴が短い {skipped} 銘柄を除外しました")
 
     for spec in _specs(args.strategy):
-        overrides = {"initial_equity": args.equity, "earnings_dates": earnings}
+        overrides = {"initial_equity": args.equity, "earnings_dates": earnings,
+                     "universe_membership": _load_membership()}
         if args.slippage is not None:
             overrides["slippage_pct"] = args.slippage
         if args.risk_pct is not None:
@@ -291,10 +372,14 @@ def cmd_compare(args) -> int:
     slips = [float(x) for x in args.slippage_levels.split(",")]
     policies = [x.strip() for x in (getattr(args, "earnings_policies", None) or "").split(",") if x.strip()]
     matched = sum(1 for sym in data if (earnings or {}).get(sym))
+    membership = _load_membership()
     report: dict = {"equity": args.equity, "symbols": len(data), "skipped": skipped,
                     "earnings_applied": earnings is not None, "earnings_symbols_matched": matched,
+                    "universe_pit": membership is not None,
+                    "universe_pit_dates": len(membership) if membership else 0,
                     "results": {}}
-    print(f"銘柄 {len(data)} / 資金 {args.equity:,.0f}円 / 決算跨ぎ禁止: {_earnings_coverage(data, earnings)}")
+    print(f"銘柄 {len(data)} / 資金 {args.equity:,.0f}円 / 決算跨ぎ禁止: {_earnings_coverage(data, earnings)}"
+          f" / 時点ユニバース: {'有効（基準日 %d 回）' % len(membership) if membership else '無効（今日の上位=生存者のみ）'}")
     specs = _specs(args.strategy)
     if not args.strategy and getattr(args, "phase", None):
         specs = [s for s in specs if s.phase == args.phase]
@@ -311,7 +396,7 @@ def cmd_compare(args) -> int:
             over = {"earnings_policy": pol} if pol else {}
             cfg = BacktestConfig.from_common(spec.common, initial_equity=args.equity,
                                              slippage_pct=sl, risk_pct_override=r,
-                                             earnings_dates=earnings, **over)
+                                             earnings_dates=earnings, universe_membership=membership, **over)
             try:
                 res = run(spec, data, index=index, config=cfg)
             except UnsupportedSpec as e:
@@ -349,7 +434,9 @@ def cmd_funnel(args) -> int:
     print(f"銘柄 {len(data)}（250本未満で除外 {skipped}）")
     for spec in specs:
         try:
-            f = funnel(spec, data, index=index, config=BacktestConfig.from_common(spec.common, earnings_dates=earnings))
+            f = funnel(spec, data, index=index,
+                       config=BacktestConfig.from_common(spec.common, earnings_dates=earnings,
+                                                         universe_membership=_load_membership()))
         except UnsupportedSpec as e:
             print(f"  {spec.id}: 未実装 {e}")
             continue
@@ -377,7 +464,7 @@ def cmd_correlate(args) -> int:
         specs = [s for s in specs if s.id in want]
     print(f"銘柄 {len(data)} / 相関測定用の資金 {args.equity:,.0f}円（サイズ制約をほぼ外して構造を見る）"
           f" / 決算跨ぎ禁止: {_earnings_coverage(data, earnings)}")
-    rep = measure(specs, data, index=index, equity=args.equity, earnings=earnings)
+    rep = measure(specs, data, index=index, equity=args.equity, earnings=earnings, membership=_load_membership())
     rep.earnings_symbols_matched = sum(1 for sym in data if (earnings or {}).get(sym))
     print("\n=== 戦略間の相関（docs/18 §18.4 の事前予想との照合） ===")
     print(format_table(rep))
@@ -411,7 +498,10 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--codes", help="カンマ区切りの銘柄コード。省略すると上場銘柄一覧を取得")
     f.add_argument("--index", help="指数を取得して index.parquet に保存。'topix' または代用ETFのコード（例: 1306）")
     f.add_argument("--earnings", action="store_true", help="キャッシュ済み銘柄の決算発表予定日を取得して earnings.parquet に保存（差分更新）")
-    f.add_argument("--universe", action="store_true", help="上場銘柄一覧＋時価総額で上位 N 銘柄の日足を取得")
+    f.add_argument("--universe", action="store_true", help="上場銘柄一覧＋時価総額で上位 N 銘柄の日足を取得（今日時点。生存者のみ）")
+    f.add_argument("--universe-pit", action="store_true",
+                   help="時点ユニバース: 基準日ごとの時価総額上位 N の和集合を取得し、所属を universe_pit.json に保存（VR-004）")
+    f.add_argument("--every", type=int, default=12, help="--universe-pit の基準日の間隔（か月）")
     f.add_argument("--market", default="プライム", help="--universe の市場区分（部分一致）。空文字で全市場")
     f.add_argument("--top", type=int, default=300, help="--universe で選ぶ銘柄数（時価総額上位）")
     f.add_argument("--start", default=None, help="省略すると契約が覆う最古日から取得します")

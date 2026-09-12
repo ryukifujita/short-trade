@@ -99,3 +99,23 @@ def test_metrics_shape(st06):
     assert m["取引数"] >= 1
     assert 0 <= m["勝率"] <= 100
     assert m["最大DD"] <= 0
+
+
+def test_metrics_report_worst_trade():
+    """最悪トレードR と最大単一損失（決算ギャップ等の尾部リスクを見る）。"""
+    from pathlib import Path
+
+    from short_trade.backtest import BacktestConfig, run
+    from short_trade.spec import load_all
+    from synthetic import flat_then_breakout_then_crash, rising_index
+
+    spec = next(s for s in load_all(Path(__file__).resolve().parents[1] / "catalog") if s.id == "ST-06")
+    df = flat_then_breakout_then_crash()
+    idx = rising_index(len(df), start=str(df.index[0].date()))
+    res = run(spec, {"T": df}, index=idx,
+              config=BacktestConfig(initial_equity=1_000_000, slippage_pct=0, hysteresis_days=1, max_position_pct=100))
+    m = res.metrics()
+    assert "最悪トレードR" in m and "最大単一損失" in m
+    closed = [t for t in res.trades if not t.forced]
+    assert m["最大単一損失"] == min(t.pnl for t in closed)           # 負けが無ければ最小の勝ちになる
+    assert m["最悪トレードR"] == min(t.r_multiple for t in closed)

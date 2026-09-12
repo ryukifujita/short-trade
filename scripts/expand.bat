@@ -3,7 +3,7 @@ rem ユニバース拡張（1回だけ）。expand_windows.bat から呼ばれ�
 cd /d "%~dp0\.."
 chcp 65001 >nul
 echo ===============================================
-echo  short-trade ユニバース拡張（300銘柄）
+echo  short-trade ユニバース拡張（時点ユニバース 300銘柄）
 echo ===============================================
 call scripts\common.bat :ensure_python || goto :fail
 call scripts\common.bat :self_update
@@ -15,8 +15,8 @@ if not exist ".env" (
 )
 set PYTHONPATH=src
 echo.
-echo プライム市場の時価総額上位 300 銘柄の日足を取得します（数分〜十数分。1回だけ）...
-".venv\Scripts\python.exe" -m short_trade fetch --universe --market プライム --top 300 || goto :fail
+echo 毎年の基準日ごとに「その時点の」プライム（旧・市場第一部）時価総額上位 300 銘柄を選び、和集合の日足を取得します（数分〜十数分）...
+".venv\Scripts\python.exe" -m short_trade fetch --universe-pit --every 12 --market プライム --top 300 || goto :fail
 echo.
 echo 追加した銘柄の決算発表予定日を取得します...
 ".venv\Scripts\python.exe" -m short_trade fetch --earnings

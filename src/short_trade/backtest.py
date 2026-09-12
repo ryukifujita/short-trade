@@ -209,6 +209,9 @@ class BacktestConfig:
     drawdown_derisk: list[tuple[float, float]] = field(default_factory=list)   # RM-022 [(dd%, 倍率)]
     min_avg_turnover_20d: float = 0.0                              # ユニバース: 20日平均売買代金
     min_listed_days: int = 0                                       # ユニバース: 上場後の営業日数
+    # 時点ごとのユニバース所属（VR-004 生存者バイアス対策）。{基準日: {銘柄コード,...}}。
+    # 基準日 t の集合は「次の基準日の前日まで」有効。None なら全銘柄が常に対象
+    universe_membership: dict[pd.Timestamp, set[str]] | None = None
     risk_pct_override: float | None = None                         # None なら戦略仕様の risk_pct を使う
 
     @classmethod
@@ -274,6 +277,8 @@ class BacktestResult:
             "平均保有日数": float(np.mean([t_bars for t_bars in self._bars_held(closed)])),
             "最大DD": dd * 100,
             "最大連敗": _max_streak(pnl <= 0),
+            "最悪トレードR": float(r.min()),                       # 決算ギャップ等の尾部リスクを見る
+            "最大単一損失": float(pnl.min()),
         }
 
     def _bars_held(self, trades: list[Trade]) -> list[int]:
@@ -378,9 +383,25 @@ def symbol_namespace(spec: StrategySpec, sym: str, df: pd.DataFrame, index: pd.D
     return ns
 
 
-def universe_filters(cfg: "BacktestConfig", df: pd.DataFrame) -> list[tuple[str, pd.Series]]:
+def membership_flag(membership: dict[pd.Timestamp, set[str]], sym: str, index: pd.Index) -> pd.Series:
+    """時点ユニバースの所属フラグ。基準日 t の集合が次の基準日の前日まで有効（ルックアヘッドなし）。"""
+    dates = sorted(membership)
+    flag = pd.Series(False, index=index)
+    for i, d in enumerate(dates):
+        if sym not in membership[d]:
+            continue
+        end = dates[i + 1] if i + 1 < len(dates) else None
+        mask = (index >= d) & ((index < end) if end is not None else True)
+        flag[mask] = True
+    return flag
+
+
+def universe_filters(cfg: "BacktestConfig", df: pd.DataFrame, sym: str = "") -> list[tuple[str, pd.Series]]:
     """common.universe 由来の銘柄フィルタ（名前つき）。"""
     out: list[tuple[str, pd.Series]] = []
+    if cfg.universe_membership:
+        out.append((f"時点ユニバースに所属（基準日 {len(cfg.universe_membership)} 回）",
+                    membership_flag(cfg.universe_membership, sym, df.index)))
     if cfg.min_avg_turnover_20d > 0:
         out.append((f"20日平均売買代金 >= {cfg.min_avg_turnover_20d:,.0f}",
                     ((df["close"] * df["volume"]).rolling(20).mean() >= cfg.min_avg_turnover_20d).fillna(False)))
@@ -449,7 +470,7 @@ def run(
     for sym, df in data.items():
         ns = symbol_namespace(spec, sym, df, index, xranks)
         entry = pd.Series(True, index=df.index)
-        for _, flag in universe_filters(cfg, df):
+        for _, flag in universe_filters(cfg, df, sym):
             entry &= flag
         for cond in spec.entry_conditions:
             entry &= _align(_eval_or_unsupported(spec.id, "条件", _rewrite_xrank(cond), ns), df.index)
