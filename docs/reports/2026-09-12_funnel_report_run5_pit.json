@@ -1,0 +1,427 @@
+{
+  "symbols": 442,
+  "skipped": 3,
+  "funnels": {
+    "ST-04": {
+      "strategy": "ST-04",
+      "name": "SEPA / VCP（ボラティリティ収縮のブレイク）",
+      "symbols": 442,
+      "symbol_days": 1032058,
+      "final_signal_days": 43,
+      "steps": [
+        {
+          "kind": "universe",
+          "text": "時点ユニバースに所属（基準日 10 回）",
+          "pass_days": 728528,
+          "pass_symbols": 424,
+          "cumulative_days": 728528,
+          "cumulative_symbols": 424
+        },
+        {
+          "kind": "universe",
+          "text": "20日平均売買代金 >= 50,000,000",
+          "pass_days": 1022993,
+          "pass_symbols": 442,
+          "cumulative_days": 722822,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "universe",
+          "text": "上場後 60 営業日以上",
+          "pass_days": 1005538,
+          "pass_symbols": 442,
+          "cumulative_days": 710481,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "entry",
+          "text": "close > SMA(close, 150) and close > SMA(close, 200)",
+          "pass_days": 504392,
+          "pass_symbols": 442,
+          "cumulative_days": 353374,
+          "cumulative_symbols": 421
+        },
+        {
+          "kind": "entry",
+          "text": "SMA(close, 150) > SMA(close, 200)",
+          "pass_days": 555555,
+          "pass_symbols": 442,
+          "cumulative_days": 268636,
+          "cumulative_symbols": 417
+        },
+        {
+          "kind": "entry",
+          "text": "SMA(close, 200) > SMA(close, 200)[-20]",
+          "pass_days": 553370,
+          "pass_symbols": 442,
+          "cumulative_days": 253737,
+          "cumulative_symbols": 416
+        },
+        {
+          "kind": "entry",
+          "text": "SMA(close, 50) > SMA(close, 150)",
+          "pass_days": 552126,
+          "pass_symbols": 442,
+          "cumulative_days": 233837,
+          "cumulative_symbols": 415
+        },
+        {
+          "kind": "entry",
+          "text": "SMA(close, 50) > SMA(close, 200)",
+          "pass_days": 544600,
+          "pass_symbols": 442,
+          "cumulative_days": 233837,
+          "cumulative_symbols": 415
+        },
+        {
+          "kind": "entry",
+          "text": "close > SMA(close, 50)",
+          "pass_days": 559347,
+          "pass_symbols": 442,
+          "cumulative_days": 170493,
+          "cumulative_symbols": 414
+        },
+        {
+          "kind": "entry",
+          "text": "close >= LOWEST(low, 250) * 1.30",
+          "pass_days": 410837,
+          "pass_symbols": 441,
+          "cumulative_days": 143555,
+          "cumulative_symbols": 412
+        },
+        {
+          "kind": "entry",
+          "text": "close >= HIGHEST(high, 250) * 0.75",
+          "pass_days": 723574,
+          "pass_symbols": 442,
+          "cumulative_days": 143307,
+          "cumulative_symbols": 412
+        },
+        {
+          "kind": "entry",
+          "text": "PCTRANK(return_126d, universe) >= 70",
+          "pass_days": 294187,
+          "pass_symbols": 442,
+          "cumulative_days": 103017,
+          "cumulative_symbols": 405
+        },
+        {
+          "kind": "entry",
+          "text": "vcp.contractions >= 3",
+          "pass_days": 1010994,
+          "pass_symbols": 442,
+          "cumulative_days": 102971,
+          "cumulative_symbols": 405
+        },
+        {
+          "kind": "entry",
+          "text": "vcp.p3 <= vcp.p1 * 0.5",
+          "pass_days": 135862,
+          "pass_symbols": 442,
+          "cumulative_days": 10816,
+          "cumulative_symbols": 352
+        },
+        {
+          "kind": "entry",
+          "text": "vcp.p1 > vcp.p2 > vcp.p3",
+          "pass_days": 187189,
+          "pass_symbols": 442,
+          "cumulative_days": 7903,
+          "cumulative_symbols": 338
+        },
+        {
+          "kind": "entry",
+          "text": "vcp.p3 <= 10.0",
+          "pass_days": 802698,
+          "pass_symbols": 442,
+          "cumulative_days": 7830,
+          "cumulative_symbols": 336
+        },
+        {
+          "kind": "entry",
+          "text": "vcp.v1 > vcp.v2 > vcp.v3",
+          "pass_days": 202632,
+          "pass_symbols": 442,
+          "cumulative_days": 2639,
+          "cumulative_symbols": 218
+        },
+        {
+          "kind": "entry",
+          "text": "close > vcp.pivot",
+          "pass_days": 272143,
+          "pass_symbols": 442,
+          "cumulative_days": 1740,
+          "cumulative_symbols": 192
+        },
+        {
+          "kind": "entry",
+          "text": "close[-1] <= vcp.pivot[-1]",
+          "pass_days": 748000,
+          "pass_symbols": 442,
+          "cumulative_days": 245,
+          "cumulative_symbols": 151
+        },
+        {
+          "kind": "entry",
+          "text": "volume >= SMA(volume, 20) * 1.5",
+          "pass_days": 101531,
+          "pass_symbols": 442,
+          "cumulative_days": 54,
+          "cumulative_symbols": 49
+        },
+        {
+          "kind": "regime",
+          "text": "INDEX.close > SMA(INDEX.close, 200)",
+          "pass_days": 641755,
+          "pass_symbols": 442,
+          "cumulative_days": 43,
+          "cumulative_symbols": 40
+        }
+      ]
+    },
+    "ST-06": {
+      "strategy": "ST-06",
+      "name": "タートルズ（ドンチャン20/10）",
+      "symbols": 442,
+      "symbol_days": 1032058,
+      "final_signal_days": 26270,
+      "steps": [
+        {
+          "kind": "universe",
+          "text": "時点ユニバースに所属（基準日 10 回）",
+          "pass_days": 728528,
+          "pass_symbols": 424,
+          "cumulative_days": 728528,
+          "cumulative_symbols": 424
+        },
+        {
+          "kind": "universe",
+          "text": "20日平均売買代金 >= 50,000,000",
+          "pass_days": 1022993,
+          "pass_symbols": 442,
+          "cumulative_days": 722822,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "universe",
+          "text": "上場後 60 営業日以上",
+          "pass_days": 1005538,
+          "pass_symbols": 442,
+          "cumulative_days": 710481,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "entry",
+          "text": "close > HIGHEST(high, 20)[-1]",
+          "pass_days": 75244,
+          "pass_symbols": 442,
+          "cumulative_days": 51180,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "entry",
+          "text": "volume > SMA(volume, 20) * 1.0",
+          "pass_days": 407085,
+          "pass_symbols": 442,
+          "cumulative_days": 36076,
+          "cumulative_symbols": 422
+        },
+        {
+          "kind": "regime",
+          "text": "INDEX.close > SMA(INDEX.close, 200)",
+          "pass_days": 641755,
+          "pass_symbols": 442,
+          "cumulative_days": 26270,
+          "cumulative_symbols": 421
+        }
+      ]
+    },
+    "ST-09": {
+      "strategy": "ST-09",
+      "name": "クロスセクショナル・モメンタム",
+      "symbols": 442,
+      "symbol_days": 1032058,
+      "final_signal_days": 40583,
+      "steps": [
+        {
+          "kind": "universe",
+          "text": "時点ユニバースに所属（基準日 10 回）",
+          "pass_days": 728528,
+          "pass_symbols": 424,
+          "cumulative_days": 728528,
+          "cumulative_symbols": 424
+        },
+        {
+          "kind": "universe",
+          "text": "20日平均売買代金 >= 50,000,000",
+          "pass_days": 1022993,
+          "pass_symbols": 442,
+          "cumulative_days": 722822,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "universe",
+          "text": "上場後 60 営業日以上",
+          "pass_days": 1005538,
+          "pass_symbols": 442,
+          "cumulative_days": 710481,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "entry",
+          "text": "PCTRANK(momentum_score, universe) >= 90",
+          "pass_days": 98060,
+          "pass_symbols": 436,
+          "cumulative_days": 62910,
+          "cumulative_symbols": 392
+        },
+        {
+          "kind": "entry",
+          "text": "close > SMA(close, 200)",
+          "pass_days": 541498,
+          "pass_symbols": 442,
+          "cumulative_days": 58650,
+          "cumulative_symbols": 389
+        },
+        {
+          "kind": "regime",
+          "text": "INDEX.close > SMA(INDEX.close, 200)",
+          "pass_days": 641755,
+          "pass_symbols": 442,
+          "cumulative_days": 40583,
+          "cumulative_symbols": 375
+        }
+      ]
+    },
+    "ST-12": {
+      "strategy": "ST-12",
+      "name": "短期RSI逆張り（Connors RSI2）",
+      "symbols": 442,
+      "symbol_days": 1032058,
+      "final_signal_days": 26292,
+      "steps": [
+        {
+          "kind": "universe",
+          "text": "時点ユニバースに所属（基準日 10 回）",
+          "pass_days": 728528,
+          "pass_symbols": 424,
+          "cumulative_days": 728528,
+          "cumulative_symbols": 424
+        },
+        {
+          "kind": "universe",
+          "text": "20日平均売買代金 >= 50,000,000",
+          "pass_days": 1022993,
+          "pass_symbols": 442,
+          "cumulative_days": 722822,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "universe",
+          "text": "上場後 60 営業日以上",
+          "pass_days": 1005538,
+          "pass_symbols": 442,
+          "cumulative_days": 710481,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "entry",
+          "text": "close > SMA(close, 200)",
+          "pass_days": 541498,
+          "pass_symbols": 442,
+          "cumulative_days": 380419,
+          "cumulative_symbols": 421
+        },
+        {
+          "kind": "entry",
+          "text": "RSI(2) < 10",
+          "pass_days": 124837,
+          "pass_symbols": 442,
+          "cumulative_days": 33816,
+          "cumulative_symbols": 419
+        },
+        {
+          "kind": "entry",
+          "text": "close < SMA(close, 5)",
+          "pass_days": 489349,
+          "pass_symbols": 442,
+          "cumulative_days": 33804,
+          "cumulative_symbols": 419
+        },
+        {
+          "kind": "regime",
+          "text": "INDEX.close > SMA(INDEX.close, 200)",
+          "pass_days": 641755,
+          "pass_symbols": 442,
+          "cumulative_days": 26292,
+          "cumulative_symbols": 418
+        }
+      ]
+    },
+    "ST-16": {
+      "strategy": "ST-16",
+      "name": "移動平均乖離率の逆張り",
+      "symbols": 442,
+      "symbol_days": 1032058,
+      "final_signal_days": 3354,
+      "steps": [
+        {
+          "kind": "universe",
+          "text": "時点ユニバースに所属（基準日 10 回）",
+          "pass_days": 728528,
+          "pass_symbols": 424,
+          "cumulative_days": 728528,
+          "cumulative_symbols": 424
+        },
+        {
+          "kind": "universe",
+          "text": "20日平均売買代金 >= 50,000,000",
+          "pass_days": 1022993,
+          "pass_symbols": 442,
+          "cumulative_days": 722822,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "universe",
+          "text": "上場後 60 営業日以上",
+          "pass_days": 1005538,
+          "pass_symbols": 442,
+          "cumulative_days": 710481,
+          "cumulative_symbols": 423
+        },
+        {
+          "kind": "entry",
+          "text": "close > SMA(close, 200)",
+          "pass_days": 541498,
+          "pass_symbols": 442,
+          "cumulative_days": 380419,
+          "cumulative_symbols": 421
+        },
+        {
+          "kind": "entry",
+          "text": "PCTRANK(deviation, 250) <= 5",
+          "pass_days": 54153,
+          "pass_symbols": 442,
+          "cumulative_days": 12897,
+          "cumulative_symbols": 401
+        },
+        {
+          "kind": "entry",
+          "text": "deviation <= -8.0",
+          "pass_days": 49966,
+          "pass_symbols": 442,
+          "cumulative_days": 4543,
+          "cumulative_symbols": 347
+        },
+        {
+          "kind": "regime",
+          "text": "INDEX.close > SMA(INDEX.close, 200)",
+          "pass_days": 641755,
+          "pass_symbols": 442,
+          "cumulative_days": 3354,
+          "cumulative_symbols": 326
+        }
+      ]
+    }
+  }
+}

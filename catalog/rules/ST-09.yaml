@@ -19,12 +19,12 @@ rebalance:
 
 entry:
   conditions:
-    - "PCTRANK(momentum_score, universe) >= 90"          # 上位10%
+    - "PCTRANK(momentum_score, universe) >= {{100 - top_pct}}"   # 上位 top_pct%（既定 10）
     - "close > SMA(close, 200)"                           # 個別銘柄も上昇トレンドであること
   rank: {by: "momentum_score", order: desc}                       # 上位から最大 max_positions まで採用
 
 definitions:
-  momentum_score: "close[-21] / close[-147] - 1"          # 直近21営業日をスキップした126営業日リターン
+  momentum_score: "close[-{{skip_days}}] / close[-{{skip_days + lookback_days}}] - 1"   # 直近 skip_days をスキップした lookback_days リターン（既定 21 / 126）
   max_positions: 5
 
 exit:

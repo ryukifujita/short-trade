@@ -18,18 +18,18 @@ regime_filter:
 
 entry:
   conditions:
-    - "close > HIGHEST(high, 20)[-1]"            # 当日終値が「前日までの20日高値」を上抜け
+    - "close > HIGHEST(high, {{entry_lookback}})[-1]"   # 当日終値が「前日までの20日高値」を上抜け
     - "volume > SMA(volume, 20) * 1.0"           # 出来高が枯れていないことの最低確認
-  rank: {by: "close / HIGHEST(high, 20)[-1] - 1", order: desc}   # 20日高値からの上抜け率が大きい順
+  rank: {by: "close / HIGHEST(high, {{entry_lookback}})[-1] - 1", order: desc}   # 20日高値からの上抜け率が大きい順
 
 exit:
   stop:
-    initial: "LOWEST(low, 10)"                   # エントリー日時点の10日安値
-    trailing: "LOWEST(low, 10)"                  # 毎日更新（切り上げのみ。切り下げない）
+    initial: "LOWEST(low, {{exit_lookback}})"    # エントリー日時点の10日安値
+    trailing: "LOWEST(low, {{exit_lookback}})"   # 毎日更新（切り上げのみ。切り下げない）
     ratchet: true
   rules:
     - name: "トレーリングストップ割れ"
-      condition: "close < LOWEST(low, 10)[-1]"
+      condition: "close < LOWEST(low, {{exit_lookback}})[-1]"
     - name: "時間手仕舞い"
       condition: "holding_days >= 40"
 

@@ -5,7 +5,45 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import ast
+import copy
+import re
+
 import yaml
+
+_PLACEHOLDER = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
+
+
+def _eval_param_expr(expr: str, params: dict[str, Any]) -> Any:
+    """`{{ name }}` や `{{ skip_days + lookback_days }}` の中身を数値として評価する（四則演算のみ）。"""
+    tree = ast.parse(expr, mode="eval")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            if node.id not in params:
+                raise SpecError(f"未定義のパラメータ {node.id!r}（params_to_optimize に無い）")
+        elif not isinstance(node, (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Constant, ast.Load,
+                                   ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub, ast.UAdd)):
+            raise SpecError(f"パラメータ式に使えない要素です: {expr!r}")
+    return eval(compile(tree, "<param>", "eval"), {"__builtins__": {}}, dict(params))
+
+
+def _format_number(v: Any) -> str:
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return repr(v)
+
+
+def substitute_params(obj: Any, params: dict[str, Any]) -> Any:
+    """raw 内のすべての文字列で `{{...}}` を置換する。params_to_optimize の宣言以外は触れない。"""
+    if isinstance(obj, str):
+        return _PLACEHOLDER.sub(lambda m: _format_number(_eval_param_expr(m.group(1), params)), obj)
+    if isinstance(obj, dict):
+        return {k: (v if k == "params_to_optimize" else substitute_params(v, params)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [substitute_params(v, params) for v in obj]
+    return obj
 
 
 class SpecError(ValueError):
@@ -20,6 +58,22 @@ class StrategySpec:
     phase: int | None
     common: dict[str, Any]
     raw: dict[str, Any]
+    template: dict[str, Any] | None = None       # `{{...}}` を残した原本。with_params で再置換する
+    param_values: dict[str, Any] | None = None   # 現在の raw に埋め込まれているパラメータ値
+
+    def with_params(self, **overrides: Any) -> "StrategySpec":
+        """宣言済みパラメータを差し替えた新しい仕様を返す（学習／検証の探索用）。"""
+        base = self.template if self.template is not None else self.raw
+        params = dict(self.params)
+        unknown = set(overrides) - set(params)
+        if unknown:
+            raise SpecError(f"{self.id}: 宣言されていないパラメータ: {sorted(unknown)}（自由度の枠外）")
+        params.update(overrides)
+        new = StrategySpec(id=self.id, name=self.name, factor=self.factor, phase=self.phase,
+                           common=self.common, raw=substitute_params(copy.deepcopy(base), params),
+                           template=base, param_values=params)
+        _ = new.rank
+        return new
 
     # --- 便利アクセサ ---
     @property
@@ -97,7 +151,13 @@ class StrategySpec:
 
     @property
     def params(self) -> dict[str, Any]:
+        if self.param_values is not None:
+            return dict(self.param_values)
         return {p["name"]: p["default"] for p in self.raw.get("params_to_optimize", [])}
+
+    @property
+    def param_specs(self) -> list[dict[str, Any]]:
+        return list(self.raw.get("params_to_optimize", []))
 
     @property
     def degrees_of_freedom(self) -> int:
@@ -127,9 +187,14 @@ def load_spec(path: Path, common: dict[str, Any]) -> StrategySpec:
     if raw["id"] != path.stem:
         raise SpecError(f"{path.name}: id({raw['id']}) がファイル名と一致しません")
 
+    defaults = {p["name"]: p["default"] for p in raw.get("params_to_optimize", [])}
+    try:
+        filled = substitute_params(copy.deepcopy(raw), defaults)
+    except SpecError as e:
+        raise SpecError(f"{path.name}: {e}") from e
     spec = StrategySpec(
         id=raw["id"], name=raw["name"], factor=raw["factor"],
-        phase=raw.get("phase"), common=common, raw=raw,
+        phase=raw.get("phase"), common=common, raw=filled, template=raw, param_values=defaults,
     )
     _ = spec.rank          # 説明文のままの rank は起動時に弾く（実行中に辞書順採用へ落ちないように）
     return spec

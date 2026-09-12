@@ -212,6 +212,7 @@ class BacktestConfig:
     # 時点ごとのユニバース所属（VR-004 生存者バイアス対策）。{基準日: {銘柄コード,...}}。
     # 基準日 t の集合は「次の基準日の前日まで」有効。None なら全銘柄が常に対象
     universe_membership: dict[pd.Timestamp, set[str]] | None = None
+    entries_from: pd.Timestamp | None = None                       # この日より前は新規建てしない（検証期間の開始）
     risk_pct_override: float | None = None                         # None なら戦略仕様の risk_pct を使う
 
     @classmethod
@@ -669,6 +670,8 @@ def run(
                    for p in positions.values() if p.pending_exit is None)
 
         candidates: list[tuple[str, float, float, float]] = []   # (銘柄, 終値, 損切り, 優先度)
+        if cfg.entries_from is not None and date < cfg.entries_from:
+            continue                                        # 検証期間の前は指標の助走だけ（建てない）
         for sym, df in data.items():
             if sym in positions or date not in df.index:
                 continue

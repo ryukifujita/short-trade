@@ -357,6 +357,32 @@ def cmd_backtest(args) -> int:
     return 0
 
 
+def _annualized_pct(curve: pd.Series) -> float:
+    """資金曲線の年率リターン（%）。"""
+    if curve is None or len(curve) < 2 or curve.iloc[0] <= 0:
+        return 0.0
+    years = (curve.index[-1] - curve.index[0]).days / 365.25
+    if years <= 0:
+        return 0.0
+    return float(((curve.iloc[-1] / curve.iloc[0]) ** (1 / years) - 1) * 100)
+
+
+def _benchmark(index: pd.DataFrame | None, data: dict) -> dict:
+    """比較の物差し: 同期間の指数（TOPIX）の買い持ち。5万円でこれに勝てなければ戦略を動かす意味がない。"""
+    if index is None or index.empty:
+        return {"index_return_pct": 0.0, "index_annualized_pct": 0.0, "years": 0.0}
+    first = min(df.index[0] for df in data.values())
+    last = max(df.index[-1] for df in data.values())
+    idx = index["close"].loc[first:last]
+    if len(idx) < 2:
+        return {"index_return_pct": 0.0, "index_annualized_pct": 0.0, "years": 0.0}
+    years = (idx.index[-1] - idx.index[0]).days / 365.25
+    total = float(idx.iloc[-1] / idx.iloc[0] - 1)
+    return {"index_return_pct": round(total * 100, 2),
+            "index_annualized_pct": round(((1 + total) ** (1 / years) - 1) * 100, 2) if years > 0 else 0.0,
+            "years": round(years, 2), "from": str(idx.index[0].date()), "to": str(idx.index[-1].date())}
+
+
 def cmd_compare(args) -> int:
     """キャッシュ済みデータで、リスク率 × スリッページの組合せを一覧にする。
 
@@ -373,7 +399,9 @@ def cmd_compare(args) -> int:
     policies = [x.strip() for x in (getattr(args, "earnings_policies", None) or "").split(",") if x.strip()]
     matched = sum(1 for sym in data if (earnings or {}).get(sym))
     membership = _load_membership()
-    report: dict = {"equity": args.equity, "symbols": len(data), "skipped": skipped,
+    bench = _benchmark(index, data)
+    print(f"ベンチマーク: 指数の同期間リターン {bench['index_return_pct']:+.1f}%（{bench['years']:.1f} 年、年率 {bench['index_annualized_pct']:+.1f}%）")
+    report: dict = {"equity": args.equity, "symbols": len(data), "skipped": skipped, "benchmark": bench,
                     "earnings_applied": earnings is not None, "earnings_symbols_matched": matched,
                     "universe_pit": membership is not None,
                     "universe_pit_dates": len(membership) if membership else 0,
@@ -390,8 +418,9 @@ def cmd_compare(args) -> int:
         # 格子: リスク率 × スリッページ（決算方針は仕様の既定）。
         # 加えて、決算方針の比較を「最も現実に近い滑り（最大値）」でだけ行う（docs/28 §28.1）
         grid = [(r, sl, None) for r in risk_levels for sl in slips]
+        default_policy = str(spec.common.get("risk", {}).get("earnings_policy", "exit"))
         if earnings is not None and policies:
-            grid += [(r, max(slips), pol) for r in risk_levels for pol in policies]
+            grid += [(r, max(slips), pol) for r in risk_levels for pol in policies if pol != default_policy]
         for r, sl, pol in grid:
             over = {"earnings_policy": pol} if pol else {}
             cfg = BacktestConfig.from_common(spec.common, initial_equity=args.equity,
@@ -404,9 +433,11 @@ def cmd_compare(args) -> int:
                 rows = None
                 break
             m = res.metrics()
+            m["年率リターン"] = _annualized_pct(res.equity_curve)
             too_small = sum(v for k, v in res.rejections.items() if "1株未満" in k)
             row = {"risk_pct": r, "slippage_pct": sl, "earnings_policy": pol or cfg.earnings_policy,
-                   **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()},
+                   **{k: (None if isinstance(v, float) and (v != v or abs(v) == float("inf"))
+                          else round(v, 3) if isinstance(v, float) else v) for k, v in m.items()},
                    "rejected_too_small": too_small, "rejections": res.rejections}
             rows.append(row)
             tag = f"  決算方針={pol}" if pol else ""
@@ -447,6 +478,38 @@ def cmd_funnel(args) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n{out.relative_to(ROOT)} に書き出しました")
+    return 0
+
+
+def cmd_optimize(args) -> int:
+    """学習／検証の分割つきパラメータ探索（VR-020 / VR-021）。宣言済みの自由度の範囲内で 1 回だけ。"""
+    from .optimize import format_result, save, walk_forward
+
+    data, index, earnings, skipped = _load_cache(args.start, args.end)
+    if index is None:
+        raise SystemExit("指数データがありません。setup を先に実行してください")
+    membership = _load_membership()
+    specs = _specs(args.strategy)
+    if not args.strategy and getattr(args, "phase", None):
+        specs = [s for s in specs if s.phase == args.phase]
+    print(f"銘柄 {len(data)} / 学習 〜{args.train_end} / 検証 {args.train_end} 以降 / 滑り {args.slippage}% / 資金 {args.equity:,.0f}円"
+          f" / 決算跨ぎ禁止: {_earnings_coverage(data, earnings)}"
+          f" / 時点ユニバース: {'有効' if membership else '無効（生存者のみ）'}")
+    results = []
+    for spec in specs:
+        if not spec.param_specs:
+            print(f"\n{spec.id}: 探索対象のパラメータがありません")
+            continue
+        print(f"\n=== {spec.id} {spec.name}（自由度 {spec.degrees_of_freedom}、各 3 水準） ===")
+        r = walk_forward(spec, data, index=index, train_end=args.train_end, earnings=earnings,
+                         membership=membership, equity=args.equity, slippage_pct=args.slippage, progress=print)
+        print(format_result(r))
+        results.append(r)
+    out = ROOT / "data" / "optimize_report.json"
+    save(results, out, extra={"symbols": len(data), "train_end": args.train_end, "slippage_pct": args.slippage,
+                              "equity": args.equity, "universe_pit": membership is not None,
+                              "earnings_symbols_matched": sum(1 for sym in data if (earnings or {}).get(sym))})
+    print(f"\n{out.relative_to(ROOT)} に書き出しました。この内容を報告してください")
     return 0
 
 
@@ -523,12 +586,22 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2）")
     c.add_argument("--risk", default="1.0,2.0", help="カンマ区切りのリスク率%%")
     c.add_argument("--slippage-levels", default="0.0,0.1", help="カンマ区切りの片道スリッページ%%")
-    c.add_argument("--earnings-policies", default="entry_only,cushion",
-                   help="決算跨ぎ方針の比較（最大スリッページでのみ実行）。空文字で省略")
+    c.add_argument("--earnings-policies", default="exit,entry_only,cushion",
+                   help="決算跨ぎ方針の比較（既定以外を最大スリッページでのみ実行）。空文字で省略")
     c.add_argument("--equity", type=float, default=50_000)
     c.add_argument("--start", default=None)
     c.add_argument("--end", default=None)
     c.set_defaults(func=cmd_compare)
+
+    o = sub.add_parser("optimize", help="学習／検証の分割つきパラメータ探索（宣言済みの自由度の範囲内、各 3 水準）")
+    o.add_argument("--strategy", default=None)
+    o.add_argument("--phase", type=int, default=2)
+    o.add_argument("--train-end", default="2021-12-31", help="学習期間の終わり（検証はこの翌日から）")
+    o.add_argument("--slippage", type=float, default=0.1)
+    o.add_argument("--equity", type=float, default=50_000)
+    o.add_argument("--start", default=None)
+    o.add_argument("--end", default=None)
+    o.set_defaults(func=cmd_optimize)
 
     fu = sub.add_parser("funnel", help="条件ファネル: 各条件で候補がどれだけ残るかを数える")
     fu.add_argument("--strategy", default=None)

@@ -26,14 +26,14 @@ entry:
     - "PCTRANK(return_126d, universe) >= 70"             # 相対強度 上位30%
     # --- VCP（収縮）の判定 ---
     - "vcp.contractions >= 3"
-    - "vcp.p3 <= vcp.p1 * 0.5"                           # 3つ目の押しが1つ目の半分以下
+    - "vcp.p3 <= vcp.p1 * {{contraction_ratio}}"         # 3つ目の押しが1つ目の半分以下（既定 0.5）
     - "vcp.p1 > vcp.p2 > vcp.p3"
     - "vcp.p3 <= 10.0"                                   # 最後の押しは10%以内
     - "vcp.v1 > vcp.v2 > vcp.v3"                         # 各押しの平均出来高が段階的に減少
     # --- ブレイク（前日はピボット以下、当日に上抜け＝クロスした日だけ） ---
     - "close > vcp.pivot"
     - "close[-1] <= vcp.pivot[-1]"                       # これが無いと上抜け後ずっと条件が真のままになる
-    - "volume >= SMA(volume, 20) * 1.5"
+    - "volume >= SMA(volume, 20) * {{pivot_volume_mult}}"   # 既定 1.5
   rank: {by: "return_126d", order: desc}                          # 相対強度の高い順
 
 definitions:
@@ -50,7 +50,7 @@ definitions:
 
 exit:
   stop:
-    initial: "max(vcp.p3_low, close_at_entry * 0.97)"    # 直近安値。ただし最大3%
+    initial: "max(vcp.p3_low, close_at_entry * (1 - {{max_stop_pct}} / 100))"   # 直近安値。ただし最大 max_stop_pct%（既定 3）
     trailing: "LOWEST(low, 10)"                          # +2R到達後に切り替え
     trailing_activates_at: "+2R"
     ratchet: true

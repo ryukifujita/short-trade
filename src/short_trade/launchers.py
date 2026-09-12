@@ -29,6 +29,11 @@ STUBS: dict[str, str] = {
         "# ユニバース拡張（macOS、1回だけ）。中身は scripts/expand.sh。このファイルは変わらない。\n"
         'cd "$(dirname "$0")" && exec bash scripts/expand.sh\n'
     ),
+    "tune_mac.command": (
+        "#!/bin/bash\n"
+        "# パラメータ探索（macOS）。中身は scripts/tune.sh。このファイルは変わらない。\n"
+        'cd "$(dirname "$0")" && exec bash scripts/tune.sh\n'
+    ),
     "start_windows.bat": (
         "@echo off\n"
         "rem 初回セットアップ（Windows）。中身は scripts\\setup.bat。このファイルは変わらない。\n"
@@ -50,6 +55,13 @@ STUBS: dict[str, str] = {
         'cd /d "%~dp0"\n'
         'if exist "scripts.new" (rmdir /s /q scripts & move /Y scripts.new scripts >nul)\n'
         "call scripts\\expand.bat\n"
+    ),
+    "tune_windows.bat": (
+        "@echo off\n"
+        "rem パラメータ探索（Windows）。中身は scripts\\tune.bat。このファイルは変わらない。\n"
+        'cd /d "%~dp0"\n'
+        'if exist "scripts.new" (rmdir /s /q scripts & move /Y scripts.new scripts >nul)\n'
+        "call scripts\\tune.bat\n"
     ),
 }
 

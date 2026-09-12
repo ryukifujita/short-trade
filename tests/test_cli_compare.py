@@ -122,7 +122,7 @@ def test_funnel_command_writes_report(cache, capsys):
 
 def test_compare_adds_earnings_policy_rows_only_when_earnings_exist(cache):
     args = Namespace(strategy="ST-06", phase=None, risk="1.0", slippage_levels="0.0,0.1",
-                     earnings_policies="entry_only,cushion", equity=1_000_000, start=None, end=None)
+                     earnings_policies="exit,entry_only,cushion", equity=1_000_000, start=None, end=None)
     cli.cmd_compare(args)
     rows = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())["results"]["ST-06"]
     default_policy = load_all(CATALOG)[0].common["risk"]["earnings_policy"]
@@ -131,9 +131,13 @@ def test_compare_adds_earnings_policy_rows_only_when_earnings_exist(cache):
     pd.DataFrame({"PubDate": ["2024-06-01"], "SchDate": ["2024-06-10"], "Code": ["11110"]}).to_parquet(cli.EARNINGS_PATH)
     cli.cmd_compare(args)
     rows = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())["results"]["ST-06"]
-    assert len(rows) == 4
+    others = [p for p in ("exit", "entry_only", "cushion") if p != default_policy]
+    assert len(rows) == 4                                        # 格子 2 行 + 既定以外の方針 2 行
     assert [(r["slippage_pct"], r["earnings_policy"]) for r in rows] == [
-        (0.0, default_policy), (0.1, default_policy), (0.1, "entry_only"), (0.1, "cushion")]
+        (0.0, default_policy), (0.1, default_policy)] + [(0.1, p) for p in others]
+    assert all("年率リターン" in r for r in rows)
+    report = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())
+    assert "benchmark" in report and "index_return_pct" in report["benchmark"]
 
 
 def test_detector_memo_returns_same_frame_for_same_bars():

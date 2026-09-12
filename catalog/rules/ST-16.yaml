@@ -17,12 +17,12 @@ regime_filter:
   - "INDEX.close > SMA(INDEX.close, 200)"
 
 definitions:
-  deviation: "(close / SMA(close, 25) - 1) * 100"       # 25日線からの乖離率（%）
+  deviation: "(close / SMA(close, {{ma_period}}) - 1) * 100"   # ma_period 日線からの乖離率（%、既定 25）
 
 entry:
   conditions:
     - "close > SMA(close, 200)"
-    - "PCTRANK(deviation, 250) <= 5"                     # その銘柄の過去250日で下位5%タイル
+    - "PCTRANK(deviation, 250) <= {{percentile}}"        # その銘柄の過去250日で下位 percentile%（既定 5）
     - "deviation <= -8.0"                                # 下限の歯止め（分布が狭い銘柄を除外）
   rank: {by: "PCTRANK(deviation, 250)", order: asc}               # 乖離が極端な順
 
@@ -35,7 +35,7 @@ exit:
     - name: "25日線への回復"
       condition: "deviation >= 0"
     - name: "時間手仕舞い"
-      condition: "holding_days >= 10"
+      condition: "holding_days >= {{hold_days}}"
 
 sizing: {method: "MM-01", risk_pct: 2.0}     # 暫定 2%（DEC-067）
 
