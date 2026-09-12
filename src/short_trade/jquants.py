@@ -182,6 +182,45 @@ class JQuantsClient:
             kwargs["end_dt"] = _ymd(end)
         return self._call("決算発表予定日の取得", self.client.get_fin_earnings_date_range, **kwargs)
 
+    def earnings_dates_for_codes(self, codes: list[str], *, retries: int = 3, workers: int = 4,
+                                 progress=None) -> tuple[pd.DataFrame, list[str]]:
+        """決算発表予定日を **銘柄ごとに** 取る（v2: /fins/earnings-date?code=）。
+
+        code 指定は「予定日の変更履歴を含む全レコード」を1回で返す。検証対象の銘柄が決まっている
+        なら、日ごとに10年ぶん（約3,650回）問い合わせるより、銘柄数ぶん（30〜300回）で済む。
+        返り値: (取れた行, 取れなかった銘柄)。
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def one(code: str) -> pd.DataFrame:
+            last: Exception | None = None
+            for attempt in range(retries):
+                try:
+                    return self.client.get_fin_earnings_date(code=code)
+                except Exception as e:
+                    last = e
+                    time.sleep(1.0 * (2 ** attempt))
+            raise JQuantsError(f"{code}: {type(last).__name__}: {str(last)[:120]}")
+
+        frames: list[pd.DataFrame] = []
+        failed: list[str] = []
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(one, c): c for c in codes}
+            for i, fut in enumerate(as_completed(futures), 1):
+                code = futures[fut]
+                try:
+                    df = fut.result()
+                    if df is not None and not df.empty:
+                        frames.append(df)
+                except JQuantsError as e:
+                    failed.append(code)
+                    if progress:
+                        progress(f"  取得失敗: {e}")
+                if progress and (i % 25 == 0 or i == len(codes)):
+                    progress(f"  [{i}/{len(codes)} 銘柄] {sum(len(f) for f in frames):,} 件")
+        out = pd.concat(frames).reset_index(drop=True) if frames else pd.DataFrame()
+        return out, sorted(failed)
+
     def earnings_dates_by_day(self, days: list[str], *, retries: int = 3, workers: int = 4,
                               progress=None) -> tuple[pd.DataFrame, list[str]]:
         """決算発表予定日を日ごとに取り、失敗した日は再試行し、それでも駄目な日は名前を挙げて返す。
@@ -286,16 +325,27 @@ def to_index(raw: pd.DataFrame) -> pd.DataFrame:
     return df[~df.index.duplicated(keep="last")].sort_index()
 
 
+def normalize_code(code: object) -> str:
+    """内部では4桁コードで扱う。v2 は5桁（末尾0）で返すことがある（例: 72030 → 7203）。"""
+    c = str(code).strip()
+    return c[:4] if len(c) == 5 and c.endswith("0") else c
+
+
 def to_earnings_map(raw: pd.DataFrame) -> dict[str, list[pd.Timestamp]]:
-    """決算発表予定日を {銘柄コード: [日付, ...]} へ。BacktestConfig.earnings_dates に渡す。"""
+    """決算発表予定日を {銘柄コード: [日付, ...]} へ。BacktestConfig.earnings_dates に渡す。
+
+    SchDate（発表予定日）を使う。PubDate はその予定が公表された日であり、決算日ではない。
+    「未定」など日付でない値は捨てる。予定日の変更履歴は **すべての日付を残す**（保守的:
+    変更前の日も回避対象になる。取り逃しより見送りを選ぶ、RM-001d）。
+    """
     if raw is None or raw.empty:
         return {}
-    col = "SchDate" if "SchDate" in raw.columns else "PubDate"
-    if col not in raw.columns or "Code" not in raw.columns:
-        raise JQuantsError(f"想定した列がありません。実際の列: {list(raw.columns)}")
+    if "SchDate" not in raw.columns or "Code" not in raw.columns:
+        raise JQuantsError(f"想定した列がありません（SchDate, Code が必要）。実際の列: {list(raw.columns)}")
+    dates = pd.to_datetime(raw["SchDate"], errors="coerce")
     out: dict[str, list[pd.Timestamp]] = {}
-    for code, group in raw.groupby("Code"):
-        # 内部では4桁コードで扱う。v2 は5桁（末尾0）で返すことがある
-        key = str(code)[:4] if len(str(code)) == 5 and str(code).endswith("0") else str(code)
-        out.setdefault(key, []).extend(pd.to_datetime(group[col]).tolist())
-    return out
+    for code, when in zip(raw["Code"], dates):
+        if pd.isna(when):
+            continue
+        out.setdefault(normalize_code(code), []).append(when.normalize())
+    return {k: sorted(set(v)) for k, v in out.items()}

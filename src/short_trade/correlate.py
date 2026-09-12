@@ -24,6 +24,8 @@ import pandas as pd
 from .backtest import BacktestConfig, UnsupportedSpec, run
 from .spec import StrategySpec
 
+MEASURE_RISK_PCT = 0.25     # 相関測定用の固定リスク率（%）。成績の DD はこの率での値
+
 
 @dataclass
 class CorrelationReport:
@@ -35,6 +37,7 @@ class CorrelationReport:
     skipped: dict[str, str] = field(default_factory=dict)
     residual_corr: pd.DataFrame | None = None      # 市場ベータを除いた残差の相関
     betas: dict[str, float] = field(default_factory=dict)
+    earnings_symbols_matched: int | None = None
 
     def judged(self) -> pd.DataFrame:
         """VR-045 の判定に使う行列。残差相関が測れていればそれ、無ければ生の相関。"""
@@ -65,6 +68,8 @@ class CorrelationReport:
                 "flags_over_0.7": [f"{a} x {b} = {v:.2f}" for a, b, v in self.flags()],
                 "raw_flags_over_0.7": [f"{a} x {b} = {v:.2f}" for a, b, v in self.flags(raw=True)],
                 "betas": {k: _r(v) for k, v in self.betas.items()},
+                "measure_risk_pct": MEASURE_RISK_PCT,
+                "earnings_symbols_matched": self.earnings_symbols_matched,
                 "metrics": self.metrics, "skipped": self.skipped}
 
 
@@ -101,9 +106,13 @@ def measure(specs: list[StrategySpec], data: dict[str, pd.DataFrame], *,
             # 成績ではなく「どの日にどの銘柄を買うか」の構造を見るため、
             # 資金・同時保有数・日次損失上限・DD縮小といった資金側の制約を外す。
             # 戦略仕様に固有の上限（ST-09 の max_positions=5）は戦略の一部なので残す。
+            # リスク率は仕様の値ではなく固定の小さい値（0.25%）にする。仕様の 2% だと1玉が資産の
+            # 2割前後になり、数玉で買付余力が尽きて「取れるはずのシグナル」が落ちる（docs/27 §27.3）。
+            # 相関は規模に依らないが、余力切れによる取捨選択には依存する。
             res = run(spec, data, index=index,
                       config=BacktestConfig.from_common(spec.common, initial_equity=equity,
                                                         slippage_pct=0.0, earnings_dates=earnings,
+                                                        risk_pct_override=MEASURE_RISK_PCT,
                                                         max_position_pct=100.0, max_portfolio_heat_pct=100.0,
                                                         max_positions=10_000, daily_loss_limit_pct=None,
                                                         drawdown_derisk=[]))

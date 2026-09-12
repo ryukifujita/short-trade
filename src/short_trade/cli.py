@@ -5,7 +5,7 @@
   python -m short_trade smoke --strategy ST-06    合成データで基盤の健全性を確認（ネットワーク不要）
   python -m short_trade fetch  --start 2015-01-01 --end 2025-12-31 --codes 7203,6758
   python -m short_trade backtest --strategy ST-06 --start 2015-01-01 --end 2025-12-31
-  python -m short_trade fetch --earnings           決算発表予定日を契約範囲ぶん取得（決算跨ぎ禁止に使う）
+  python -m short_trade fetch --earnings           キャッシュ済み銘柄の決算発表予定日を取得（決算跨ぎ禁止に使う）
   python -m short_trade compare                    キャッシュからリスク率×スリッページの比較表を出す
   python -m short_trade correlate                  Phase 2 の戦略間の相関を測る（VR-045）
   python -m short_trade funnel --strategy ST-04    条件ファネル（取引が少ない戦略の診断）
@@ -29,6 +29,14 @@ CATALOG = ROOT / "catalog"
 DATA = ROOT / "data" / "jquants"
 EARNINGS_PATH = DATA / "earnings.parquet"
 EARNINGS_PROGRESS = DATA / "earnings_progress.json"
+
+
+def _earnings_coverage(data: dict, earnings) -> str:
+    """決算日が何銘柄に紐づいたか。0 なら決算跨ぎ禁止は実質無効なので、必ず表示する。"""
+    if earnings is None:
+        return "無効（fetch --earnings で有効化）"
+    n = sum(1 for sym in data if earnings.get(sym))
+    return f"有効（{n}/{len(data)} 銘柄に決算日あり）" if n else f"**無効同然**（決算日が1銘柄にも一致しない。fetch --earnings を実行）"
 
 
 def _load_cache(start=None, end=None, min_bars: int = 250):
@@ -187,71 +195,55 @@ def cmd_fetch(args) -> int:
     return 0
 
 
-def _fetch_earnings(client, start: str, end: str | None) -> int:
-    """決算発表予定日を日ごとに取り、途中経過を保存し、次回は続きから取る（再開可能）。
+def _fetch_earnings(client, start: str, end: str | None, *, max_age_days: int = 1) -> int:
+    """決算発表予定日を **キャッシュ済み銘柄ごとに** 取る（差分更新・再開可能）。
 
-    公式クライアントの範囲取得は1日の失敗で全体が落ちる。利用者の環境では約3,650日の
-    どこかで落ちて `earnings.parquet` が作られず、決算跨ぎ禁止（RM-001d）が無効のまま
-    比較が走った（docs/26 §26.1）。ここでは:
-      - 月ごとに区切って取り、区切りごとに parquet と進捗ファイルを書く
-      - 失敗した日は進捗ファイルに残し、次回の先頭で再試行する
-      - 完了済みなら「その日以降」だけを取る（毎回の実行が差分更新になる）
+    経緯（docs/27 §27.1）: 最初は日ごとに10年ぶん問い合わせていたが、途中の1日の失敗で
+    全体が落ちた。さらに取れたあとも、比較の結果が1件も変わらなかった（決算日が一致していない）。
+    v2 の `/fins/earnings-date?code=` は1銘柄の全履歴を1回で返すので、こちらに切り替えた。
+      - 対象は data/jquants/daily にある銘柄（＝バックテストの対象）
+      - 銘柄ごとに取得日時を進捗ファイルに記録し、max_age_days より新しいものは取り直さない
+      - 失敗した銘柄は次回に再試行する
     """
     import json
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta
 
-    today = date.today()
-    end_day = pd.Timestamp(end).date() if end else today
+    from .jquants import normalize_code
+
+    codes = sorted(f.stem for f in (DATA / "daily").glob("*.parquet"))
+    if not codes:
+        raise SystemExit("キャッシュ済みの銘柄がありません。先に setup（または fetch）を実行してください")
     prog = json.loads(EARNINGS_PROGRESS.read_text()) if EARNINGS_PROGRESS.exists() else {}
+    fetched: dict[str, str] = dict(prog.get("fetched", {}))
+    cutoff = datetime.now() - timedelta(days=max_age_days)
+    todo = [c for c in codes if c not in fetched or datetime.fromisoformat(fetched[c]) < cutoff]
     existing = pd.read_parquet(EARNINGS_PATH) if EARNINGS_PATH.exists() else pd.DataFrame()
-    pending = list(prog.get("failed_days", []))
-    done_through = prog.get("done_through")
-    first = (pd.Timestamp(done_through).date() + timedelta(days=1)) if done_through else pd.Timestamp(start).date()
-    days = [d.strftime("%Y-%m-%d") for d in pd.date_range(first, end_day, freq="D")] if first <= end_day else []
-    days = sorted(set(pending) | set(days))
-    if not days:
-        print(f"決算発表予定日は {done_through} まで取得済みです（{len(existing):,} 件）")
+    if not todo:
+        print(f"決算発表予定日は {len(codes)} 銘柄ぶん取得済みです（{len(existing):,} 件）")
         return 0
-    label = "続きから" if done_through else f"{start} から"
-    print(f"決算発表予定日を{label}取得します（{len(days):,} 日ぶん。日ごとの問い合わせのため初回は数分〜十数分）…")
-
-    def flush(frames: list[pd.DataFrame], through: str, failed: list[str]) -> None:
-        nonlocal existing
-        if frames:
-            new = pd.concat([existing] + frames) if not existing.empty else pd.concat(frames)
-            keys = [c for c in ("Code", "PubDate", "SchDate") if c in new.columns]
-            existing = new.drop_duplicates(subset=keys or None).reset_index(drop=True)
-            EARNINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-            existing.to_parquet(EARNINGS_PATH)
-        EARNINGS_PROGRESS.parent.mkdir(parents=True, exist_ok=True)
-        EARNINGS_PROGRESS.write_text(json.dumps(
-            {"done_through": through, "failed_days": sorted(failed), "rows": int(len(existing))},
-            ensure_ascii=False, indent=2), encoding="utf-8")
-
-    # 月ごとの塊にして、塊ごとに保存する（途中で止まっても続きから再開できる）
-    chunks: dict[str, list[str]] = {}
-    for d in days:
-        chunks.setdefault(d[:7], []).append(d)
-    # done_through = 「この日までは、failed_days に挙げた日を除いて取得済み」。
-    # 失敗した日は穴として記録し、次回の先頭で再試行する。
-    failed_all: set[str] = set()
-    not_attempted = set(pending)          # 途中で打ち切っても、未着手の穴は失わない
-    through = done_through or ""
-    for month, chunk in sorted(chunks.items()):
-        df, failed = client.earnings_dates_by_day(chunk, progress=print)
-        failed_all.update(failed)
-        not_attempted.difference_update(chunk)
-        through = max(through, max(chunk))
-        flush([df] if not df.empty else [], through, sorted(failed_all | not_attempted))
-        if failed and len(failed) == len(chunk):
-            print("  この月はすべて失敗しました。回線か API の状態を確認して、後でもう一度実行してください")
-            break
-    holes = sorted(failed_all | not_attempted)
-    if holes:
-        print(f"取得できなかった日が {len(holes)} 件あります（{holes[:3]}…）。次回の実行で再試行します")
-    print(f"決算発表予定日 {len(existing):,} 件を {EARNINGS_PATH.relative_to(ROOT)} に保存しました（{through} まで）")
+    print(f"決算発表予定日を {len(todo)} 銘柄ぶん取得します（銘柄ごとに1回。数十秒〜数分）…")
+    df, failed = client.earnings_dates_for_codes(todo, progress=print)
+    now = datetime.now().isoformat(timespec="seconds")
+    if not df.empty:
+        df = df.copy()
+        df["_code4"] = df["Code"].map(normalize_code)
+        keep = existing[~existing["_code4"].isin(set(df["_code4"]))] if "_code4" in existing.columns else existing
+        existing = pd.concat([keep, df]).reset_index(drop=True) if not keep.empty else df
+        keys = [c for c in ("Code", "PubDate", "SchDate", "FYE", "FQName") if c in existing.columns]
+        existing = existing.drop_duplicates(subset=keys or None).reset_index(drop=True)
+        EARNINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        existing.to_parquet(EARNINGS_PATH)
+    for c in todo:
+        if c not in failed:
+            fetched[c] = now
+    EARNINGS_PROGRESS.parent.mkdir(parents=True, exist_ok=True)
+    EARNINGS_PROGRESS.write_text(json.dumps({"fetched": fetched, "failed": failed, "rows": int(len(existing))},
+                                            ensure_ascii=False, indent=2), encoding="utf-8")
+    got = len(set(existing["_code4"]) & set(codes)) if "_code4" in existing.columns else 0
+    if failed:
+        print(f"取得できなかった銘柄が {len(failed)} 件あります（{failed[:5]}）。次回の実行で再試行します")
+    print(f"決算発表予定日 {len(existing):,} 件を保存しました（{got}/{len(codes)} 銘柄に日付あり）")
     return 0
-
 
 def cmd_backtest(args) -> int:
     data, index, earnings, skipped = _load_cache(args.start, args.end)
@@ -297,9 +289,11 @@ def cmd_compare(args) -> int:
         raise SystemExit("指数データがありません。setup を先に実行してください")
     risk_levels = [float(x) for x in args.risk.split(",")]
     slips = [float(x) for x in args.slippage_levels.split(",")]
+    matched = sum(1 for sym in data if (earnings or {}).get(sym))
     report: dict = {"equity": args.equity, "symbols": len(data), "skipped": skipped,
-                    "earnings_applied": earnings is not None, "results": {}}
-    print(f"銘柄 {len(data)} / 資金 {args.equity:,.0f}円 / 決算跨ぎ禁止: {'有効' if earnings else '無効（fetch --earnings で有効化）'}")
+                    "earnings_applied": earnings is not None, "earnings_symbols_matched": matched,
+                    "results": {}}
+    print(f"銘柄 {len(data)} / 資金 {args.equity:,.0f}円 / 決算跨ぎ禁止: {_earnings_coverage(data, earnings)}")
     specs = _specs(args.strategy)
     if not args.strategy and getattr(args, "phase", None):
         specs = [s for s in specs if s.phase == args.phase]
@@ -375,8 +369,10 @@ def cmd_correlate(args) -> int:
     if args.strategies:
         want = {x.strip() for x in args.strategies.split(",")}
         specs = [s for s in specs if s.id in want]
-    print(f"銘柄 {len(data)} / 相関測定用の資金 {args.equity:,.0f}円（サイズ制約をほぼ外して構造を見る）")
+    print(f"銘柄 {len(data)} / 相関測定用の資金 {args.equity:,.0f}円（サイズ制約をほぼ外して構造を見る）"
+          f" / 決算跨ぎ禁止: {_earnings_coverage(data, earnings)}")
     rep = measure(specs, data, index=index, equity=args.equity, earnings=earnings)
+    rep.earnings_symbols_matched = sum(1 for sym in data if (earnings or {}).get(sym))
     print("\n=== 戦略間の相関（docs/18 §18.4 の事前予想との照合） ===")
     print(format_table(rep))
     out = ROOT / "data" / "correlation_report.json"
@@ -408,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
     f = sub.add_parser("fetch", help="J-Quants からデータを取得")
     f.add_argument("--codes", help="カンマ区切りの銘柄コード。省略すると上場銘柄一覧を取得")
     f.add_argument("--index", help="指数を取得して index.parquet に保存。'topix' または代用ETFのコード（例: 1306）")
-    f.add_argument("--earnings", action="store_true", help="決算発表予定日を契約範囲ぶん取得して earnings.parquet に保存")
+    f.add_argument("--earnings", action="store_true", help="キャッシュ済み銘柄の決算発表予定日を取得して earnings.parquet に保存（差分更新）")
     f.add_argument("--universe", action="store_true", help="上場銘柄一覧＋時価総額で上位 N 銘柄の日足を取得")
     f.add_argument("--market", default="プライム", help="--universe の市場区分（部分一致）。空文字で全市場")
     f.add_argument("--top", type=int, default=300, help="--universe で選ぶ銘柄数（時価総額上位）")
@@ -428,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
 
     c = sub.add_parser("compare", help="キャッシュからリスク率×スリッページの比較表を出す")
     c.add_argument("--strategy", default=None, help="1本だけ比較する。省略すると --phase の全戦略")
-    c.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2 の4本）")
+    c.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2）")
     c.add_argument("--risk", default="1.0,2.0", help="カンマ区切りのリスク率%%")
     c.add_argument("--slippage-levels", default="0.0,0.1", help="カンマ区切りの片道スリッページ%%")
     c.add_argument("--equity", type=float, default=50_000)
@@ -444,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
     fu.set_defaults(func=cmd_funnel)
 
     r = sub.add_parser("correlate", help="戦略間の相関を測る（VR-045）")
-    r.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2 の4本）")
+    r.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2）")
     r.add_argument("--strategies", default=None, help="カンマ区切りで明示（--phase より優先）")
     r.add_argument("--equity", type=float, default=10_000_000)
     r.add_argument("--start", default=None)

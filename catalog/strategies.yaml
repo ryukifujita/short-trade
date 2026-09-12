@@ -180,6 +180,7 @@ entries:
     factor: "F4"
     role: "signal"
     status: "selected_primary"
+    status_note: "DEC-068: 往復コスト 0.2% で PF 1.03 / 0.94（docs/27）。稼働候補から外し、F4 は ST-16 で再試験"
     phase: 2
     timeframe: "デイ〜スイング"
     direction: "買い"
@@ -236,14 +237,14 @@ entries:
     factor: "F4"
     role: "signal"
     status: "selected_secondary"
-    phase: 3
+    phase: 2                      # DEC-068: F4 の代表候補として前倒し
     timeframe: "デイ〜スイング"
     direction: "買い"
     implementability: "B"
     data_required: "日足"
     note: "F4の第2代表候補。オシレーターではなく価格距離で測るため ST-12 と factor 内で分離できる可能性がある。相関確認が採用条件"
     rules_written: true           # catalog/rules/ST-16.yaml
-    backtested: false
+    backtested: true
   - id: "ST-17"
     name: "小型株分散逆張り"
     source: "株1000 氏（公開情報）"

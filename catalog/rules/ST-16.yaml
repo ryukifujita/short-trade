@@ -2,7 +2,7 @@ id: "ST-16"
 name: "移動平均乖離率の逆張り"
 source: "BNF 氏が公開インタビューで語った考え方"
 factor: "F4"
-phase: 3
+phase: 2                        # F4 の代表候補として前倒し（DEC-068, docs/27）。ST-12 は往復コストで期待値が消えた
 extends: "../common.yaml"
 
 hypothesis: >
@@ -37,7 +37,7 @@ exit:
     - name: "時間手仕舞い"
       condition: "holding_days >= 10"
 
-sizing: {method: "MM-01", risk_pct: 1.0}
+sizing: {method: "MM-01", risk_pct: 2.0}     # 暫定 2%（DEC-067）
 
 params_to_optimize:
   - {name: ma_period,  default: 25, range: [15, 40],  step: 5}
