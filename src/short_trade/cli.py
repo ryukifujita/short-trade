@@ -8,6 +8,7 @@
   python -m short_trade fetch --earnings           決算発表予定日を契約範囲ぶん取得（決算跨ぎ禁止に使う）
   python -m short_trade compare                    キャッシュからリスク率×スリッページの比較表を出す
   python -m short_trade correlate                  Phase 2 の戦略間の相関を測る（VR-045）
+  python -m short_trade funnel --strategy ST-04    条件ファネル（取引が少ない戦略の診断）
   python -m short_trade fetch --universe --top 300 上場銘柄一覧＋時価総額で上位 N 銘柄を取得
 """
 from __future__ import annotations
@@ -27,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "catalog"
 DATA = ROOT / "data" / "jquants"
 EARNINGS_PATH = DATA / "earnings.parquet"
+EARNINGS_PROGRESS = DATA / "earnings_progress.json"
 
 
 def _load_cache(start=None, end=None, min_bars: int = 250):
@@ -154,14 +156,7 @@ def cmd_fetch(args) -> int:
         print(f"完了: {ok} 銘柄。universe.json に選定結果を保存しました")
         return 0
     if args.earnings:
-        print(f"決算発表予定日を {start} から取得します。日ごとの問い合わせになるため数分〜十数分かかります…")
-        df = client.earnings_dates(start=start, end=None)
-        if df is None or df.empty:
-            raise SystemExit("決算発表予定日が取得できませんでした")
-        EARNINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(EARNINGS_PATH)
-        print(f"決算発表予定日 {len(df)} 件を {EARNINGS_PATH} に保存しました")
-        return 0
+        return _fetch_earnings(client, start, args.end)
     if args.index:
         out = ROOT / "data" / "jquants" / "index.parquet"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -189,6 +184,72 @@ def cmd_fetch(args) -> int:
         bars = to_bars(raw)
         print(f"{code}: {len(bars)} 本  {bars.index.min()} 〜 {bars.index.max()}"
               if len(bars) else f"{code}: データなし")
+    return 0
+
+
+def _fetch_earnings(client, start: str, end: str | None) -> int:
+    """決算発表予定日を日ごとに取り、途中経過を保存し、次回は続きから取る（再開可能）。
+
+    公式クライアントの範囲取得は1日の失敗で全体が落ちる。利用者の環境では約3,650日の
+    どこかで落ちて `earnings.parquet` が作られず、決算跨ぎ禁止（RM-001d）が無効のまま
+    比較が走った（docs/26 §26.1）。ここでは:
+      - 月ごとに区切って取り、区切りごとに parquet と進捗ファイルを書く
+      - 失敗した日は進捗ファイルに残し、次回の先頭で再試行する
+      - 完了済みなら「その日以降」だけを取る（毎回の実行が差分更新になる）
+    """
+    import json
+    from datetime import date, timedelta
+
+    today = date.today()
+    end_day = pd.Timestamp(end).date() if end else today
+    prog = json.loads(EARNINGS_PROGRESS.read_text()) if EARNINGS_PROGRESS.exists() else {}
+    existing = pd.read_parquet(EARNINGS_PATH) if EARNINGS_PATH.exists() else pd.DataFrame()
+    pending = list(prog.get("failed_days", []))
+    done_through = prog.get("done_through")
+    first = (pd.Timestamp(done_through).date() + timedelta(days=1)) if done_through else pd.Timestamp(start).date()
+    days = [d.strftime("%Y-%m-%d") for d in pd.date_range(first, end_day, freq="D")] if first <= end_day else []
+    days = sorted(set(pending) | set(days))
+    if not days:
+        print(f"決算発表予定日は {done_through} まで取得済みです（{len(existing):,} 件）")
+        return 0
+    label = "続きから" if done_through else f"{start} から"
+    print(f"決算発表予定日を{label}取得します（{len(days):,} 日ぶん。日ごとの問い合わせのため初回は数分〜十数分）…")
+
+    def flush(frames: list[pd.DataFrame], through: str, failed: list[str]) -> None:
+        nonlocal existing
+        if frames:
+            new = pd.concat([existing] + frames) if not existing.empty else pd.concat(frames)
+            keys = [c for c in ("Code", "PubDate", "SchDate") if c in new.columns]
+            existing = new.drop_duplicates(subset=keys or None).reset_index(drop=True)
+            EARNINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            existing.to_parquet(EARNINGS_PATH)
+        EARNINGS_PROGRESS.parent.mkdir(parents=True, exist_ok=True)
+        EARNINGS_PROGRESS.write_text(json.dumps(
+            {"done_through": through, "failed_days": sorted(failed), "rows": int(len(existing))},
+            ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 月ごとの塊にして、塊ごとに保存する（途中で止まっても続きから再開できる）
+    chunks: dict[str, list[str]] = {}
+    for d in days:
+        chunks.setdefault(d[:7], []).append(d)
+    # done_through = 「この日までは、failed_days に挙げた日を除いて取得済み」。
+    # 失敗した日は穴として記録し、次回の先頭で再試行する。
+    failed_all: set[str] = set()
+    not_attempted = set(pending)          # 途中で打ち切っても、未着手の穴は失わない
+    through = done_through or ""
+    for month, chunk in sorted(chunks.items()):
+        df, failed = client.earnings_dates_by_day(chunk, progress=print)
+        failed_all.update(failed)
+        not_attempted.difference_update(chunk)
+        through = max(through, max(chunk))
+        flush([df] if not df.empty else [], through, sorted(failed_all | not_attempted))
+        if failed and len(failed) == len(chunk):
+            print("  この月はすべて失敗しました。回線か API の状態を確認して、後でもう一度実行してください")
+            break
+    holes = sorted(failed_all | not_attempted)
+    if holes:
+        print(f"取得できなかった日が {len(holes)} 件あります（{holes[:3]}…）。次回の実行で再試行します")
+    print(f"決算発表予定日 {len(existing):,} 件を {EARNINGS_PATH.relative_to(ROOT)} に保存しました（{through} まで）")
     return 0
 
 
@@ -239,7 +300,10 @@ def cmd_compare(args) -> int:
     report: dict = {"equity": args.equity, "symbols": len(data), "skipped": skipped,
                     "earnings_applied": earnings is not None, "results": {}}
     print(f"銘柄 {len(data)} / 資金 {args.equity:,.0f}円 / 決算跨ぎ禁止: {'有効' if earnings else '無効（fetch --earnings で有効化）'}")
-    for spec in _specs(args.strategy):
+    specs = _specs(args.strategy)
+    if not args.strategy and getattr(args, "phase", None):
+        specs = [s for s in specs if s.phase == args.phase]
+    for spec in specs:
         rows = []
         print(f"\n=== {spec.id} {spec.name} ===")
         print(f"  {'リスク%':>6} {'滑り%':>5} {'取引':>5} {'勝率':>6} {'PF':>6} {'平均R':>6} {'最大DD':>7} {'連敗':>4} {'総損益':>9}  1株未満で却下")
@@ -268,6 +332,34 @@ def cmd_compare(args) -> int:
     out = ROOT / "data" / "compare_report.json"
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n比較表を {out.relative_to(ROOT)} に書き出しました。この内容を報告してください（認証情報は含まれません）")
+    return 0
+
+
+def cmd_funnel(args) -> int:
+    """条件ファネル: 各条件で候補がどれだけ残るかを数える（取引が少ない戦略の診断）。"""
+    import json
+
+    from .diagnose import format_funnel, funnel
+
+    data, index, earnings, skipped = _load_cache(args.start, args.end)
+    specs = _specs(args.strategy)
+    if not args.strategy and getattr(args, "phase", None):
+        specs = [s for s in specs if s.phase == args.phase]
+    report = {"symbols": len(data), "skipped": skipped, "funnels": {}}
+    print(f"銘柄 {len(data)}（250本未満で除外 {skipped}）")
+    for spec in specs:
+        try:
+            f = funnel(spec, data, index=index, config=BacktestConfig.from_common(spec.common, earnings_dates=earnings))
+        except UnsupportedSpec as e:
+            print(f"  {spec.id}: 未実装 {e}")
+            continue
+        print()
+        print(format_funnel(f))
+        report["funnels"][spec.id] = f.to_dict()
+    out = ROOT / "data" / "funnel_report.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n{out.relative_to(ROOT)} に書き出しました")
     return 0
 
 
@@ -335,13 +427,21 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--risk-pct", type=float, default=None, help="1トレードのリスク率%%（仕様の値を上書き）")
 
     c = sub.add_parser("compare", help="キャッシュからリスク率×スリッページの比較表を出す")
-    c.add_argument("--strategy", default="ST-06")
+    c.add_argument("--strategy", default=None, help="1本だけ比較する。省略すると --phase の全戦略")
+    c.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2 の4本）")
     c.add_argument("--risk", default="1.0,2.0", help="カンマ区切りのリスク率%%")
     c.add_argument("--slippage-levels", default="0.0,0.1", help="カンマ区切りの片道スリッページ%%")
     c.add_argument("--equity", type=float, default=50_000)
     c.add_argument("--start", default=None)
     c.add_argument("--end", default=None)
     c.set_defaults(func=cmd_compare)
+
+    fu = sub.add_parser("funnel", help="条件ファネル: 各条件で候補がどれだけ残るかを数える")
+    fu.add_argument("--strategy", default=None)
+    fu.add_argument("--phase", type=int, default=2)
+    fu.add_argument("--start", default=None)
+    fu.add_argument("--end", default=None)
+    fu.set_defaults(func=cmd_funnel)
 
     r = sub.add_parser("correlate", help="戦略間の相関を測る（VR-045）")
     r.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2 の4本）")

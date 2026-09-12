@@ -20,15 +20,16 @@ if not exist "data\jquants\daily" (
   ".venv\Scripts\python.exe" -m short_trade fetch --index topix
   ".venv\Scripts\python.exe" -m short_trade fetch --codes 7203,6758,9432,8058,4063,6098,6501,8035,9984,7974,6861,8306,4502,6902,7741,4568,6367,9433,8031,6594,4519,6954,7267,8766,6857,4661,9983,2914,8001,3382
 )
-if not exist "data\jquants\earnings.parquet" (
-  echo.
-  echo 決算発表予定日を取得します（初回のみ。数分〜十数分）...
-  ".venv\Scripts\python.exe" -m short_trade fetch --earnings
-)
+echo.
+echo 決算発表予定日を確認します（初回は数分〜十数分。2回目以降は差分だけ）...
+".venv\Scripts\python.exe" -m short_trade fetch --earnings
 echo.
 ".venv\Scripts\python.exe" -m short_trade compare
 echo.
 echo ----- 戦略間の相関（Phase 2 の4本） -----
 ".venv\Scripts\python.exe" -m short_trade correlate
+echo.
+echo ----- 条件ファネル（各条件で候補がどれだけ残るか） -----
+".venv\Scripts\python.exe" -m short_trade funnel
 echo.
 pause

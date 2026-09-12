@@ -23,14 +23,15 @@ if [ ! -d "data/jquants/daily" ] || [ -z "$(ls -A data/jquants/daily 2>/dev/null
   ./.venv/bin/python -m short_trade fetch --index topix || ./.venv/bin/python -m short_trade fetch --index 1306
   ./.venv/bin/python -m short_trade fetch --codes 7203,6758,9432,8058,4063,6098,6501,8035,9984,7974,6861,8306,4502,6902,7741,4568,6367,9433,8031,6594,4519,6954,7267,8766,6857,4661,9983,2914,8001,3382
 fi
-if [ ! -f "data/jquants/earnings.parquet" ]; then
-  echo ""
-  echo "決算発表予定日を取得します（初回のみ。数分〜十数分）..."
-  ./.venv/bin/python -m short_trade fetch --earnings || echo "（決算日の取得に失敗。決算跨ぎ禁止は無効のまま続けます）"
-fi
+echo ""
+echo "決算発表予定日を確認します（初回は数分〜十数分。2回目以降は差分だけ）..."
+./.venv/bin/python -m short_trade fetch --earnings || echo "（決算日の取得に失敗。取れた分は保存済みで、次回続きから再試行します）"
 echo ""
 ./.venv/bin/python -m short_trade compare
 echo ""
 echo "----- 戦略間の相関（Phase 2 の4本） -----"
 ./.venv/bin/python -m short_trade correlate
+echo ""
+echo "----- 条件ファネル（各条件で候補がどれだけ残るか） -----"
+./.venv/bin/python -m short_trade funnel
 pause_exit 0

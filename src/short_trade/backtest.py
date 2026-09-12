@@ -306,6 +306,73 @@ def validate_bars(sym: str, df: pd.DataFrame) -> pd.DataFrame:
 
 # ---------------------------------------------------------------- 本体
 
+# ---------------------------------------------------------------- 名前空間の構築（run と diagnose で共用）
+
+def _bind_detectors(spec: StrategySpec, ns: dict, df: pd.DataFrame) -> None:
+    for name, cfg_d in spec.detector_definitions.items():
+        kind = cfg_d["detector"]
+        if kind not in DETECTORS:
+            raise UnsupportedSpec(f"{spec.id}: 検出器 {kind!r} は登録されていません（detectors.py）")
+        params = {k: v for k, v in cfg_d.items() if k not in ("detector", "note", "detection", "pivot", "v1_v2_v3")}
+        ns[name] = _Frame(DETECTORS[kind](df, **params))
+
+
+def _bind_definitions(spec: StrategySpec, ns: dict) -> None:
+    for name, expr in spec.definitions.items():
+        ns[name] = _eval_or_unsupported(spec.id, f"定義 {name}", expr, ns) if isinstance(expr, str) else expr
+
+
+def cross_sectional_ranks(spec: StrategySpec, data: dict[str, pd.DataFrame],
+                          index: pd.DataFrame | None) -> dict[str, pd.DataFrame]:
+    """`PCTRANK(x, universe)` の対象 x を全銘柄ぶん並べ、日ごとの百分位順位（0〜100）にする。"""
+    xrank_names = _xrank_targets(spec)
+    xranks: dict[str, pd.DataFrame] = {}
+    if not xrank_names:
+        return xranks
+    raw_values: dict[str, dict[str, pd.Series]] = {n: {} for n in xrank_names}
+    for sym, df in data.items():
+        ns0 = build_namespace(df, index=index)
+        _bind_detectors(spec, ns0, df)
+        _bind_definitions(spec, ns0)
+        for n in xrank_names:
+            if isinstance(ns0.get(n), pd.Series):
+                raw_values[n][sym] = ns0[n]
+    for n in xrank_names:
+        if not raw_values[n]:
+            raise UnsupportedSpec(f"{spec.id}: クロスセクショナル順位の対象 {n} を計算できません")
+        xranks[n] = pd.DataFrame(raw_values[n]).rank(axis=1, pct=True) * 100.0
+    return xranks
+
+
+def symbol_namespace(spec: StrategySpec, sym: str, df: pd.DataFrame, index: pd.DataFrame | None,
+                     xranks: dict[str, pd.DataFrame]) -> dict:
+    """1銘柄ぶんの式評価用の名前空間（価格列・指数・検出器・順位・定義）。"""
+    ns = build_namespace(df, index=index)
+    _bind_detectors(spec, ns, df)
+    for n, frame in xranks.items():
+        if sym in frame.columns:
+            ns[_xrank_name(n)] = frame[sym].reindex(df.index)
+    _bind_definitions(spec, ns)
+    return ns
+
+
+def universe_filters(cfg: "BacktestConfig", df: pd.DataFrame) -> list[tuple[str, pd.Series]]:
+    """common.universe 由来の銘柄フィルタ（名前つき）。"""
+    out: list[tuple[str, pd.Series]] = []
+    if cfg.min_avg_turnover_20d > 0:
+        out.append((f"20日平均売買代金 >= {cfg.min_avg_turnover_20d:,.0f}",
+                    ((df["close"] * df["volume"]).rolling(20).mean() >= cfg.min_avg_turnover_20d).fillna(False)))
+    if cfg.min_listed_days > 0:
+        out.append((f"上場後 {cfg.min_listed_days} 営業日以上",
+                    pd.Series(np.arange(len(df)) >= cfg.min_listed_days, index=df.index)))
+    return out
+
+
+def regime_flag(spec: StrategySpec, cfg: "BacktestConfig", cond: str, ns: dict, target: pd.Index) -> pd.Series:
+    flag = _align(_eval_or_unsupported(spec.id, "レジーム条件", _rewrite_xrank(cond), ns), target)
+    return _with_hysteresis(flag, cfg.hysteresis_days)
+
+
 def run(
     spec: StrategySpec,
     data: dict[str, pd.DataFrame],
@@ -350,53 +417,20 @@ def run(
     trailing_at = _parse_r(spec.raw.get("exit", {}).get("stop", {}).get("trailing_activates_at"))
     rebalance = spec.raw.get("rebalance")
 
-    def _bind_detectors(ns: dict, df: pd.DataFrame) -> None:
-        for name, cfg_d in spec.detector_definitions.items():
-            kind = cfg_d["detector"]
-            if kind not in DETECTORS:
-                raise UnsupportedSpec(f"{spec.id}: 検出器 {kind!r} は登録されていません（detectors.py）")
-            params = {k: v for k, v in cfg_d.items() if k not in ("detector", "note", "detection", "pivot", "v1_v2_v3")}
-            ns[name] = _Frame(DETECTORS[kind](df, **params))
-
     # --- 事前パス: クロスセクショナル順位 ---
-    xrank_names = _xrank_targets(spec)
-    xranks: dict[str, pd.DataFrame] = {}
-    if xrank_names:
-        raw_values: dict[str, dict[str, pd.Series]] = {n: {} for n in xrank_names}
-        for sym, df in data.items():
-            ns0 = build_namespace(df, index=index)
-            _bind_detectors(ns0, df)
-            for name, expr in spec.definitions.items():
-                ns0[name] = _eval_or_unsupported(spec.id, f"定義 {name}", expr, ns0) if isinstance(expr, str) else expr
-            for n in xrank_names:
-                if isinstance(ns0.get(n), pd.Series):
-                    raw_values[n][sym] = ns0[n]
-        for n in xrank_names:
-            if not raw_values[n]:
-                raise UnsupportedSpec(f"{spec.id}: クロスセクショナル順位の対象 {n} を計算できません")
-            xranks[n] = pd.DataFrame(raw_values[n]).rank(axis=1, pct=True) * 100.0
+    xranks = cross_sectional_ranks(spec, data, index)
 
     # --- 事前計算: 銘柄ごとの条件式 ---
     precomputed: dict[str, dict[str, Any]] = {}
     for sym, df in data.items():
-        ns = build_namespace(df, index=index)
-        _bind_detectors(ns, df)
-        for n, frame in xranks.items():
-            if sym in frame.columns:
-                ns[_xrank_name(n)] = frame[sym].reindex(df.index)
-        for name, expr in spec.definitions.items():
-            ns[name] = _eval_or_unsupported(spec.id, f"定義 {name}", expr, ns) if isinstance(expr, str) else expr
-
+        ns = symbol_namespace(spec, sym, df, index, xranks)
         entry = pd.Series(True, index=df.index)
-        if cfg.min_avg_turnover_20d > 0:                       # common.universe.min_avg_turnover_20d
-            entry &= ((df["close"] * df["volume"]).rolling(20).mean() >= cfg.min_avg_turnover_20d).fillna(False)
-        if cfg.min_listed_days > 0:                            # common.universe.min_listed_days
-            entry &= pd.Series(np.arange(len(df)) >= cfg.min_listed_days, index=df.index)
+        for _, flag in universe_filters(cfg, df):
+            entry &= flag
         for cond in spec.entry_conditions:
             entry &= _align(_eval_or_unsupported(spec.id, "条件", _rewrite_xrank(cond), ns), df.index)
         for cond in spec.regime_conditions:
-            flag = _align(_eval_or_unsupported(spec.id, "レジーム条件", _rewrite_xrank(cond), ns), df.index)
-            entry &= _with_hysteresis(flag, cfg.hysteresis_days)
+            entry &= regime_flag(spec, cfg, cond, ns, df.index)
 
         exits: dict[str, pd.Series] = {}
         for rule in spec.exit_rules:

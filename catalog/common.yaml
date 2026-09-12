@@ -46,7 +46,7 @@ risk:
   stop_mechanism: "論理ストップ"
   stop_execution: "条件成立を検知した次の執行枠で成行売り"
   assumed_loss_multiple: 2.0        # RM-001b ギャップ込みで損切り幅の2倍を想定損失とする
-  risk_pct_default: 1.0             # RM-002 口座資産に対する1トレードの想定損失
+  risk_pct_default: 2.0             # RM-002 暫定 2%（DEC-067, docs/26 §26.2）。資産 10万円到達で再判断。各戦略の sizing.risk_pct が実際の値
   max_position_pct: 15              # RM-001c 1銘柄あたりの投下額上限
   max_portfolio_heat_pct: 6.0       # RM-010
   max_concurrent_positions: 8       # RM-013

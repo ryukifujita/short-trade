@@ -100,3 +100,21 @@ def test_fetch_index_path_defines_start(monkeypatch, tmp_path):
     assert _cli.cmd_fetch(args) == 0
     assert calls["start"] == "2016-09-10"
     assert (tmp_path / "data" / "jquants" / "index.parquet").exists()
+
+
+def test_compare_defaults_to_all_phase2_strategies(cache):
+    args = Namespace(strategy=None, phase=2, risk="1.0", slippage_levels="0.0",
+                     equity=1_000_000, start=None, end=None)
+    assert cli.cmd_compare(args) == 0
+    report = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())
+    assert {"ST-04", "ST-06", "ST-09", "ST-12"} <= set(report["results"])
+    assert all(len(rows) == 1 for rows in report["results"].values())
+
+
+def test_funnel_command_writes_report(cache, capsys):
+    args = Namespace(strategy="ST-06", phase=None, start=None, end=None)
+    assert cli.cmd_funnel(args) == 0
+    report = json.loads((cli.ROOT / "data" / "funnel_report.json").read_text())
+    f = report["funnels"]["ST-06"]
+    assert f["symbols"] == 3 and f["steps"] and "final_signal_days" in f
+    assert "ここまでAND" in capsys.readouterr().out

@@ -36,7 +36,7 @@ exit:
 
 sizing:
   method: "MM-01"
-  risk_pct: 1.0
+  risk_pct: 2.0                 # 暫定 2%（DEC-067, docs/26 §26.2）。資産 10万円到達で再判断
 
 params_to_optimize:
   - {name: rsi_period,     default: 2,   range: [2, 4],     step: 1}

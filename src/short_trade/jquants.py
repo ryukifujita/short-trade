@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -169,13 +170,56 @@ class JQuantsClient:
                           from_yyyymmdd=_ymd(start), to_yyyymmdd=_ymd(end))
 
     def earnings_dates(self, *, start=None, end=None) -> pd.DataFrame:
-        """決算発表予定日（v2: /fins/earnings-date）。RM-001d / ST-23 で使う。"""
+        """決算発表予定日（v2: /fins/earnings-date）。RM-001d / ST-23 で使う。
+
+        公式クライアントの範囲取得は、期間内の **1日でも失敗すると全体が例外で落ち、
+        取れた分も捨てられる**。長期間（約3,650日）を取るときは `earnings_dates_by_day` を使う。
+        """
         kwargs = {}
         if start:
             kwargs["start_dt"] = _ymd(start)
         if end:
             kwargs["end_dt"] = _ymd(end)
         return self._call("決算発表予定日の取得", self.client.get_fin_earnings_date_range, **kwargs)
+
+    def earnings_dates_by_day(self, days: list[str], *, retries: int = 3, workers: int = 4,
+                              progress=None) -> tuple[pd.DataFrame, list[str]]:
+        """決算発表予定日を日ごとに取り、失敗した日は再試行し、それでも駄目な日は名前を挙げて返す。
+
+        返り値: (取れた行の DataFrame, 取れなかった日のリスト)。1日の失敗で全体を捨てない。
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def one(day: str) -> pd.DataFrame:
+            last: Exception | None = None
+            for attempt in range(retries):
+                try:
+                    return self.client.get_fin_earnings_date(date_yyyymmdd=day)
+                except Exception as e:      # 429/5xx/一時的な切断
+                    last = e
+                    time.sleep(1.0 * (2 ** attempt))
+            raise JQuantsError(f"{day}: {type(last).__name__}: {str(last)[:120]}")
+
+        frames: list[pd.DataFrame] = []
+        failed: list[str] = []
+        done = 0
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(one, d): d for d in days}
+            for fut in as_completed(futures):
+                day = futures[fut]
+                try:
+                    df = fut.result()
+                    if df is not None and not df.empty:
+                        frames.append(df)
+                except JQuantsError as e:
+                    failed.append(day)
+                    if progress:
+                        progress(f"  取得失敗（後で再試行します）: {e}")
+                done += 1
+                if progress and (done % 200 == 0 or done == len(days)):
+                    progress(f"  [{done}/{len(days)} 日] 取得済み {sum(len(f) for f in frames):,} 件")
+        out = pd.concat(frames).reset_index(drop=True) if frames else pd.DataFrame()
+        return out, sorted(failed)
 
     # ------------------------------------------------------------ キャッシュ
     def cached_daily_quotes(self, code: str, *, start, end=None,

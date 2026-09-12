@@ -2,7 +2,11 @@
 
 測るもの:
   1. 資金曲線の日次リターンの相関（実際に同時に沈むか）
-  2. エントリー日×銘柄の重なり（Jaccard）（同じ日に同じ銘柄を買っているか）
+  2. 市場ベータを除いた残差リターンの相関（**VR-045 の判定はこちら**、docs/26 DEC-066）
+     現物買いだけの戦略は、どれも「市場が上がれば増え、下がれば減る」共通部分（ベータ）を持つ。
+     生の相関はその共通部分で底上げされ、シグナルの重なりが見えない。
+     各戦略の日次リターンを指数リターンで回帰し、残差どうしの相関を取る。
+  3. エントリー日×銘柄の重なり（Jaccard）（同じ日に同じ銘柄を買っているか）
 
 注意: 5万円のサイズ制約下では「1株未満」の却下が支配的になり、シグナル構造が見えない。
 相関は **サイズ制約をほぼ外した資金（既定 1,000万円）** で測る。目的は成績ではなく構造の把握。
@@ -29,12 +33,19 @@ class CorrelationReport:
     predicted: dict[tuple[str, str], float]
     metrics: dict[str, dict] = field(default_factory=dict)
     skipped: dict[str, str] = field(default_factory=dict)
+    residual_corr: pd.DataFrame | None = None      # 市場ベータを除いた残差の相関
+    betas: dict[str, float] = field(default_factory=dict)
 
-    def flags(self, threshold: float = 0.7) -> list[tuple[str, str, float]]:
-        """同一因子として扱うべきペア（VR-045）。"""
+    def judged(self) -> pd.DataFrame:
+        """VR-045 の判定に使う行列。残差相関が測れていればそれ、無ければ生の相関。"""
+        return self.residual_corr if self.residual_corr is not None else self.return_corr
+
+    def flags(self, threshold: float = 0.7, *, raw: bool = False) -> list[tuple[str, str, float]]:
+        """同一因子として扱うべきペア（VR-045）。既定は残差相関で判定する（DEC-066）。"""
+        mat = self.return_corr if raw else self.judged()
         out = []
         for a, b in itertools.combinations(self.strategies, 2):
-            v = float(self.return_corr.loc[a, b])
+            v = float(mat.loc[a, b])
             if not np.isnan(v) and v >= threshold:
                 out.append((a, b, v))
         return out
@@ -45,12 +56,33 @@ class CorrelationReport:
             pairs.append({
                 "pair": f"{a} x {b}",
                 "return_corr": _r(self.return_corr.loc[a, b]),
+                "residual_corr": _r(self.residual_corr.loc[a, b]) if self.residual_corr is not None else None,
                 "entry_jaccard": _r(self.entry_jaccard.loc[a, b]),
                 "predicted": self.predicted.get((a, b), self.predicted.get((b, a))),
             })
         return {"strategies": self.strategies, "pairs": pairs,
+                "judged_on": "residual" if self.residual_corr is not None else "raw",
                 "flags_over_0.7": [f"{a} x {b} = {v:.2f}" for a, b, v in self.flags()],
+                "raw_flags_over_0.7": [f"{a} x {b} = {v:.2f}" for a, b, v in self.flags(raw=True)],
+                "betas": {k: _r(v) for k, v in self.betas.items()},
                 "metrics": self.metrics, "skipped": self.skipped}
+
+
+def market_residuals(curves: dict[str, pd.Series], index: pd.DataFrame | None
+                     ) -> tuple[dict[str, pd.Series], dict[str, float]]:
+    """各戦略の日次リターンから市場ベータ×指数リターンを引いた残差と、ベータを返す。"""
+    if index is None or "close" not in index.columns:
+        return {}, {}
+    mkt = index["close"].astype(float).pct_change()
+    residuals: dict[str, pd.Series] = {}
+    betas: dict[str, float] = {}
+    for sid, r in curves.items():
+        m = mkt.reindex(r.index).fillna(0.0)
+        var = float(m.var())
+        beta = float(r.cov(m) / var) if var > 0 else 0.0
+        residuals[sid] = r - beta * m
+        betas[sid] = beta
+    return residuals, betas
 
 
 def _r(v) -> float | None:
@@ -84,6 +116,8 @@ def measure(specs: list[StrategySpec], data: dict[str, pd.DataFrame], *,
 
     ids = list(curves)
     ret = pd.DataFrame(curves).corr() if len(ids) >= 2 else pd.DataFrame(index=ids, columns=ids, dtype=float)
+    residuals, betas = market_residuals(curves, index)
+    res_corr = (pd.DataFrame(residuals).corr() if len(residuals) >= 2 else None)
     jac = pd.DataFrame(np.eye(len(ids)), index=ids, columns=ids)
     for a, b in itertools.combinations(ids, 2):
         u = entries[a] | entries[b]
@@ -94,18 +128,24 @@ def measure(specs: list[StrategySpec], data: dict[str, pd.DataFrame], *,
         for other, info in (spec.raw.get("expected_correlation") or {}).items():
             if isinstance(info, dict) and "predicted" in info:
                 predicted[(spec.id, other)] = float(info["predicted"])
-    return CorrelationReport(ids, ret, jac, predicted, metrics, skipped)
+    return CorrelationReport(ids, ret, jac, predicted, metrics, skipped, res_corr, betas)
 
 
 def format_table(rep: CorrelationReport) -> str:
-    lines = ["  ペア                 実測(日次)  予想   差    エントリー重なり"]
+    lines = ["  ペア                 生の相関  残差相関  予想   差    エントリー重なり"]
     for a, b in itertools.combinations(rep.strategies, 2):
         v = rep.return_corr.loc[a, b]
+        rv = rep.residual_corr.loc[a, b] if rep.residual_corr is not None else np.nan
+        judged = rv if rep.residual_corr is not None else v
         p = rep.predicted.get((a, b), rep.predicted.get((b, a)))
         j = rep.entry_jaccard.loc[a, b]
-        diff = "" if p is None or np.isnan(v) else f"{v - p:+.2f}"
-        mark = "  ← 0.7超（同一因子扱い）" if not np.isnan(v) and v >= 0.7 else ""
-        lines.append(f"  {a} x {b:<8} {v:>8.2f}  {('' if p is None else f'{p:.2f}'):>5} {diff:>6}  {j:>6.2f}{mark}")
+        diff = "" if p is None or np.isnan(judged) else f"{judged - p:+.2f}"
+        mark = "  ← 0.7超（同一因子扱い）" if not np.isnan(judged) and judged >= 0.7 else ""
+        rv_text = "   -" if np.isnan(rv) else f"{rv:>8.2f}"
+        lines.append(f"  {a} x {b:<8} {v:>8.2f} {rv_text}  {('' if p is None else f'{p:.2f}'):>5} {diff:>6}  {j:>6.2f}{mark}")
+    if rep.betas:
+        lines.append("  市場ベータ: " + ", ".join(f"{k} {v:.2f}" for k, v in rep.betas.items()))
+        lines.append("  （判定は残差相関。生の相関は市場ベータで底上げされる。docs/26 DEC-066）")
     for sid, why in rep.skipped.items():
         lines.append(f"  （{sid} は未実装のため除外: {why[:60]}）")
     return "\n".join(lines)

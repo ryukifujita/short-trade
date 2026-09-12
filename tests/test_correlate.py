@@ -54,3 +54,35 @@ def test_unsupported_strategy_is_skipped_not_fatal():
     idx = rising_index(420, start=str(data["A"].index[0].date()))
     rep = measure([SPECS["ST-06"], SPECS["ST-23"]], data, index=idx)
     assert "ST-23" in rep.skipped and "ST-06" in rep.strategies
+
+
+def test_residual_correlation_removes_market_beta():
+    """指数と同じ動きをする2本は、生の相関は高いが残差相関はそれより低い。
+
+    ここでは測定器の性質だけを確かめる: 残差行列が出ること、同一戦略の残差相関は1のままであること、
+    ベータが各戦略ぶん計算されること。
+    """
+    import copy
+    data = _universe()
+    idx = rising_index(420, start=str(data["A"].index[0].date()))
+    twin = copy.deepcopy(SPECS["ST-06"])
+    twin.id = "ST-06b"
+    rep = measure([SPECS["ST-06"], twin], data, index=idx)
+    assert rep.residual_corr is not None
+    assert rep.residual_corr.loc["ST-06", "ST-06b"] > 0.999
+    assert set(rep.betas) == {"ST-06", "ST-06b"}
+    d = rep.to_dict()
+    assert d["judged_on"] == "residual"
+    assert d["pairs"][0]["residual_corr"] is not None
+    assert d["flags_over_0.7"] and d["raw_flags_over_0.7"]
+
+
+def test_market_residuals_zero_out_a_pure_beta_curve():
+    """戦略リターン = 2×指数リターン なら、残差はゼロでベータは2。"""
+    from short_trade.correlate import market_residuals
+    idx = rising_index(50, start="2024-01-01")
+    m = idx["close"].pct_change().fillna(0.0)
+    curves = {"X": 2.0 * m}
+    res, betas = market_residuals(curves, idx)
+    assert abs(betas["X"] - 2.0) < 1e-9
+    assert float(res["X"].abs().max()) < 1e-12
