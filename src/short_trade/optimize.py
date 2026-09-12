@@ -137,6 +137,10 @@ def walk_forward(spec: StrategySpec, data: dict[str, pd.DataFrame], *, index: pd
     if best_score is None or best_score == float("-inf"):
         res.note = f"学習期間で取引数 {min_trades} 以上の組合せがありません"
         best_params = dict(spec.params)
+    elif best_score <= 0:
+        # 学習期間で勝てる組合せが無いのに「最もましな負け方」を選ぶのは選択ではない。既定値のままにする
+        res.note = f"学習期間で平均R が正の組合せがありません（最良 {best_score:+.3f}）。既定値のままにします"
+        best_params = dict(spec.params)
     res.best = best_params
 
     # 3. 検証期間（助走つき。train_end より前は建てない）

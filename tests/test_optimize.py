@@ -80,3 +80,17 @@ def test_walk_forward_reports_grid_best_and_test_for_both(monkeypatch):
 def test_g1_check_thresholds():
     assert all(g1_check({"取引数": 100, "プロフィットファクタ": 1.3, "期待値": 0.1, "最大DD": -15.0}).values())
     assert not g1_check({"取引数": 99, "プロフィットファクタ": 2.0, "期待値": 1.0, "最大DD": -5.0})["取引数 >= 100"]
+
+
+def test_walk_forward_keeps_defaults_when_no_combo_is_positive_in_train():
+    """学習期間で勝てる組合せが無ければ「最もましな負け」を選ばず既定値のまま。"""
+    rng = np.random.default_rng(11)
+    data = {}
+    for i, code in enumerate("ABCDEF"):                      # 下落トレンドの合成: ブレイクは失敗しやすい
+        closes = 1000 * np.cumprod((0.9995) * (1 + rng.normal(0, 0.012, 900)))
+        data[code] = make_bars(closes, start="2020-01-01")
+    idx = rising_index(900, start="2020-01-01")
+    r = walk_forward(SPECS["ST-06"], data, index=idx, train_end="2022-06-30", equity=1_000_000,
+                     slippage_pct=0.1, min_trades=5)
+    if all((g["平均R"] or 0) <= 0 for g in r.grid if (g["取引数"] or 0) >= 5):
+        assert r.best == r.defaults and "既定値のまま" in r.note
