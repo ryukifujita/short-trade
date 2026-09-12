@@ -234,3 +234,50 @@ def test_prose_rank_is_rejected_as_spec_error():
     spec = _spec(entry={"conditions": ["close > HIGHEST(high, 20)[-1]"], "rank": "高い順"})
     with pytest.raises(SpecError):
         _ = spec.rank
+
+
+# ---------------------------------------------------------------- 決算跨ぎ方針（RM-001d, docs/28 §28.1）
+
+def _earnings_setup():
+    from synthetic import flat_then_breakout, rising_index
+    df = flat_then_breakout(n_flat=60, n_up=40)
+    idx = rising_index(len(df), start=str(df.index[0].date()))
+    spec = next(s for s in load_all(CATALOG) if s.id == "ST-06")
+    # 上昇の途中（ブレイクの 10 営業日後）に決算日を置く
+    breakout = df.index[60]
+    earn = df.index[70]
+    return spec, df, idx, breakout, earn
+
+
+def _run_policy(policy, cushion=1.0):
+    spec, df, idx, breakout, earn = _earnings_setup()
+    cfg = BacktestConfig(initial_equity=1_000_000, slippage_pct=0, hysteresis_days=1, max_position_pct=100,
+                         earnings_dates={"T": [earn]}, earnings_policy=policy, earnings_cushion_r=cushion)
+    return run(spec, {"T": df}, index=idx, config=cfg), earn
+
+
+def test_policy_exit_closes_before_earnings():
+    res, earn = _run_policy("exit")
+    assert res.trades and res.trades[0].exit_reason == "決算跨ぎ回避"
+    assert res.trades[0].exit_date < earn
+
+
+def test_policy_entry_only_holds_through_earnings():
+    res, earn = _run_policy("entry_only")
+    assert res.trades
+    assert all(t.exit_reason != "決算跨ぎ回避" for t in res.trades)
+    assert res.trades[0].exit_date > earn
+
+
+def test_policy_cushion_depends_on_unrealized_r():
+    held, earn = _run_policy("cushion", cushion=0.1)       # 直前で +0.1R 以上あれば持ち越す
+    cut, _ = _run_policy("cushion", cushion=50.0)          # 50R は不可能 → 手仕舞う
+    assert held.trades[0].exit_date > earn
+    assert cut.trades[0].exit_reason == "決算跨ぎ回避"
+
+
+def test_unknown_policy_is_rejected():
+    spec, df, idx, _, earn = _earnings_setup()
+    with pytest.raises(ValueError):
+        run(spec, {"T": df}, index=idx,
+            config=BacktestConfig(earnings_dates={"T": [earn]}, earnings_policy="hold"))

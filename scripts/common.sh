@@ -5,7 +5,7 @@
 BRANCH="claude/stock-trading-tool-requirements-d0irut"
 ZIP_URL="https://github.com/ryukifujita/short-trade/archive/refs/heads/${BRANCH}.zip"
 # 自己更新で置き換える対象（状態ファイルは含めない）
-UPDATE_ITEMS="src catalog docs tests config scripts requirements.txt README.md start_mac.command run_mac.command start_windows.bat run_windows.bat .gitignore"
+UPDATE_ITEMS="src catalog docs tests config scripts requirements.txt README.md start_mac.command run_mac.command start_windows.bat run_windows.bat expand_mac.command expand_windows.bat .gitignore"
 
 pause_exit() { echo ""; read -r -p "Enter キーで閉じます..."; exit "${1:-1}"; }
 

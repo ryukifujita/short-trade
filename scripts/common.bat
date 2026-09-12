@@ -37,7 +37,7 @@ tar -xf "%TMPD%\code.zip" -C "%TMPD%" >nul 2>&1
 if errorlevel 1 (echo （更新をスキップ: 展開に失敗） & rmdir /s /q "%TMPD%" & exit /b 0)
 for /d %%d in ("%TMPD%\short-trade-*") do set "SRC=%%d"
 if not defined SRC (rmdir /s /q "%TMPD%" & exit /b 0)
-for %%i in (src catalog docs tests config requirements.txt README.md start_mac.command run_mac.command start_windows.bat .gitignore) do (
+for %%i in (src catalog docs tests config requirements.txt README.md start_mac.command run_mac.command expand_mac.command start_windows.bat expand_windows.bat .gitignore) do (
   if exist "%SRC%\%%i\" (rmdir /s /q "%%i" >nul 2>&1 & xcopy /E /I /Q /Y "%SRC%\%%i" "%%i" >nul)
   if exist "%SRC%\%%i" if not exist "%SRC%\%%i\" copy /Y "%SRC%\%%i" "%%i" >nul
 )

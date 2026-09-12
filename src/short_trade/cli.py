@@ -289,6 +289,7 @@ def cmd_compare(args) -> int:
         raise SystemExit("指数データがありません。setup を先に実行してください")
     risk_levels = [float(x) for x in args.risk.split(",")]
     slips = [float(x) for x in args.slippage_levels.split(",")]
+    policies = [x.strip() for x in (getattr(args, "earnings_policies", None) or "").split(",") if x.strip()]
     matched = sum(1 for sym in data if (earnings or {}).get(sym))
     report: dict = {"equity": args.equity, "symbols": len(data), "skipped": skipped,
                     "earnings_applied": earnings is not None, "earnings_symbols_matched": matched,
@@ -301,26 +302,31 @@ def cmd_compare(args) -> int:
         rows = []
         print(f"\n=== {spec.id} {spec.name} ===")
         print(f"  {'リスク%':>6} {'滑り%':>5} {'取引':>5} {'勝率':>6} {'PF':>6} {'平均R':>6} {'最大DD':>7} {'連敗':>4} {'総損益':>9}  1株未満で却下")
-        for r in risk_levels:
-            for sl in slips:
-                cfg = BacktestConfig.from_common(spec.common, initial_equity=args.equity,
-                                                 slippage_pct=sl, risk_pct_override=r,
-                                                 earnings_dates=earnings)
-                try:
-                    res = run(spec, data, index=index, config=cfg)
-                except UnsupportedSpec as e:
-                    print(f"  未実装: {e}")
-                    rows = None
-                    break
-                m = res.metrics()
-                too_small = sum(v for k, v in res.rejections.items() if "1株未満" in k)
-                row = {"risk_pct": r, "slippage_pct": sl, **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()},
-                       "rejected_too_small": too_small, "rejections": res.rejections}
-                rows.append(row)
-                print(f"  {r:>6.1f} {sl:>5.2f} {m.get('取引数', 0):>5} {m.get('勝率', 0):>5.1f}% {m.get('プロフィットファクタ', 0):>6.2f} "
-                      f"{m.get('平均R', 0):>6.2f} {m.get('最大DD', 0):>6.1f}% {m.get('最大連敗', 0):>4} {m.get('総損益', 0):>9,.0f}  {too_small}")
-            if rows is None:
+        # 格子: リスク率 × スリッページ（決算方針は仕様の既定）。
+        # 加えて、決算方針の比較を「最も現実に近い滑り（最大値）」でだけ行う（docs/28 §28.1）
+        grid = [(r, sl, None) for r in risk_levels for sl in slips]
+        if earnings is not None and policies:
+            grid += [(r, max(slips), pol) for r in risk_levels for pol in policies]
+        for r, sl, pol in grid:
+            over = {"earnings_policy": pol} if pol else {}
+            cfg = BacktestConfig.from_common(spec.common, initial_equity=args.equity,
+                                             slippage_pct=sl, risk_pct_override=r,
+                                             earnings_dates=earnings, **over)
+            try:
+                res = run(spec, data, index=index, config=cfg)
+            except UnsupportedSpec as e:
+                print(f"  未実装: {e}")
+                rows = None
                 break
+            m = res.metrics()
+            too_small = sum(v for k, v in res.rejections.items() if "1株未満" in k)
+            row = {"risk_pct": r, "slippage_pct": sl, "earnings_policy": pol or cfg.earnings_policy,
+                   **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()},
+                   "rejected_too_small": too_small, "rejections": res.rejections}
+            rows.append(row)
+            tag = f"  決算方針={pol}" if pol else ""
+            print(f"  {r:>6.1f} {sl:>5.2f} {m.get('取引数', 0):>5} {m.get('勝率', 0):>5.1f}% {m.get('プロフィットファクタ', 0):>6.2f} "
+                  f"{m.get('平均R', 0):>6.2f} {m.get('最大DD', 0):>6.1f}% {m.get('最大連敗', 0):>4} {m.get('総損益', 0):>9,.0f}  {too_small}{tag}")
         if rows:
             report["results"][spec.id] = rows
     out = ROOT / "data" / "compare_report.json"
@@ -427,6 +433,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--phase", type=int, default=2, help="対象フェーズ（既定: Phase 2）")
     c.add_argument("--risk", default="1.0,2.0", help="カンマ区切りのリスク率%%")
     c.add_argument("--slippage-levels", default="0.0,0.1", help="カンマ区切りの片道スリッページ%%")
+    c.add_argument("--earnings-policies", default="entry_only,cushion",
+                   help="決算跨ぎ方針の比較（最大スリッページでのみ実行）。空文字で省略")
     c.add_argument("--equity", type=float, default=50_000)
     c.add_argument("--start", default=None)
     c.add_argument("--end", default=None)

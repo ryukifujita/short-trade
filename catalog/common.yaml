@@ -56,6 +56,8 @@ risk:
     - {dd_pct: 10.0, size_mult: 0.25}
   no_earnings_hold: true            # RM-001d 決算をまたいで保有しない
   earnings_blackout_days: 1         # 決算発表日の前後1営業日はエントリー禁止
+  earnings_policy: "exit"           # RM-001d の運用方針: exit（決算前に必ず手仕舞う）/ entry_only / cushion。docs/28 §28.1
+  earnings_cushion_r: 1.0           # cushion のとき、含み益がこの R 以上なら持ち越す
   same_day_round_trip: 1            # RM-006 現物の差金決済規制（同一銘柄1日1回転）
 
 sizing:

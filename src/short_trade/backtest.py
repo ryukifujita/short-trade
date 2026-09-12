@@ -199,6 +199,12 @@ class BacktestConfig:
     hysteresis_days: int = 3
     earnings_dates: dict[str, list[pd.Timestamp]] | None = None   # 未指定なら決算跨ぎ禁止は無効
     earnings_blackout_days: int = 1
+    # RM-001d の運用方針（docs/28 §28.1）。
+    #   exit       … 決算前に必ず手仕舞う（原案）。エントリーも前後 k 日は禁止
+    #   entry_only … エントリー禁止だけ。保有中の玉は決算をまたいで持つ
+    #   cushion    … 含み益が earnings_cushion_r 以上なら持ち越し、未満なら手仕舞う
+    earnings_policy: str = "exit"
+    earnings_cushion_r: float = 1.0
     daily_loss_limit_pct: float | None = 2.0                       # RM-020
     drawdown_derisk: list[tuple[float, float]] = field(default_factory=list)   # RM-022 [(dd%, 倍率)]
     min_avg_turnover_20d: float = 0.0                              # ユニバース: 20日平均売買代金
@@ -224,6 +230,8 @@ class BacktestConfig:
             assumed_loss_multiple=float(risk.get("assumed_loss_multiple", 2.0)),
             hysteresis_days=int(regime.get("hysteresis_days", 1)),
             earnings_blackout_days=int(risk.get("earnings_blackout_days", 1)),
+            earnings_policy=str(risk.get("earnings_policy", "exit")),
+            earnings_cushion_r=float(risk.get("earnings_cushion_r", 1.0)),
             daily_loss_limit_pct=risk.get("daily_loss_limit_pct"),
             drawdown_derisk=derisk,
             min_avg_turnover_20d=float(universe.get("min_avg_turnover_20d", 0) or 0),
@@ -308,13 +316,27 @@ def validate_bars(sym: str, df: pd.DataFrame) -> pd.DataFrame:
 
 # ---------------------------------------------------------------- 名前空間の構築（run と diagnose で共用）
 
+_DETECTOR_MEMO: dict[tuple, pd.DataFrame] = {}
+
+
+def _detector_key(kind: str, params: dict, df: pd.DataFrame) -> tuple:
+    """同じ足・同じ引数なら結果は同じ。compare のように同じデータで何度も走らせるときの再計算を避ける。"""
+    return (kind, tuple(sorted(params.items())), len(df), str(df.index[0]), str(df.index[-1]),
+            float(df["close"].iloc[-1]), float(df["volume"].sum()))
+
+
 def _bind_detectors(spec: StrategySpec, ns: dict, df: pd.DataFrame) -> None:
     for name, cfg_d in spec.detector_definitions.items():
         kind = cfg_d["detector"]
         if kind not in DETECTORS:
             raise UnsupportedSpec(f"{spec.id}: 検出器 {kind!r} は登録されていません（detectors.py）")
         params = {k: v for k, v in cfg_d.items() if k not in ("detector", "note", "detection", "pivot", "v1_v2_v3")}
-        ns[name] = _Frame(DETECTORS[kind](df, **params))
+        key = _detector_key(kind, params, df)
+        if key not in _DETECTOR_MEMO:
+            if len(_DETECTOR_MEMO) > 2000:
+                _DETECTOR_MEMO.clear()
+            _DETECTOR_MEMO[key] = DETECTORS[kind](df, **params)
+        ns[name] = _Frame(_DETECTOR_MEMO[key])
 
 
 def _bind_definitions(spec: StrategySpec, ns: dict) -> None:
@@ -387,6 +409,8 @@ def run(
     index: 市場全体（TOPIX など）。式の `INDEX.close` に束縛される。
     """
     cfg = config or BacktestConfig.from_common(spec.common)
+    if cfg.earnings_policy not in ("exit", "entry_only", "cushion"):
+        raise ValueError(f"earnings_policy が不正です: {cfg.earnings_policy!r}（exit / entry_only / cushion）")
     warnings: list[str] = []
     if not data:
         raise ValueError("銘柄データが空です。fetch でデータを取得し、250本以上ある銘柄が存在することを確認してください")
@@ -584,8 +608,10 @@ def run(
             reason = None
             if close < pos.stop_price:
                 reason = "論理ストップ"          # RM-001a: 翌執行枠で成行
-            elif cfg.earnings_dates and in_earnings_blackout(sym, all_dates[i + 1]):
-                reason = "決算跨ぎ回避"          # RM-001d
+            elif (cfg.earnings_dates and cfg.earnings_policy != "entry_only"
+                  and in_earnings_blackout(sym, all_dates[i + 1])
+                  and not (cfg.earnings_policy == "cushion" and r_now >= cfg.earnings_cushion_r)):
+                reason = "決算跨ぎ回避"          # RM-001d（方針は cfg.earnings_policy）
             else:
                 for rule in spec.exit_rules:
                     cond = rule["condition"]

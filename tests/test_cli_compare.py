@@ -118,3 +118,34 @@ def test_funnel_command_writes_report(cache, capsys):
     f = report["funnels"]["ST-06"]
     assert f["symbols"] == 3 and f["steps"] and "final_signal_days" in f
     assert "ここまでAND" in capsys.readouterr().out
+
+
+def test_compare_adds_earnings_policy_rows_only_when_earnings_exist(cache):
+    args = Namespace(strategy="ST-06", phase=None, risk="1.0", slippage_levels="0.0,0.1",
+                     earnings_policies="entry_only,cushion", equity=1_000_000, start=None, end=None)
+    cli.cmd_compare(args)
+    rows = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())["results"]["ST-06"]
+    assert len(rows) == 2 and all(r["earnings_policy"] == "exit" for r in rows)   # 決算日なし → 方針の行は出ない
+
+    pd.DataFrame({"PubDate": ["2024-06-01"], "SchDate": ["2024-06-10"], "Code": ["11110"]}).to_parquet(cli.EARNINGS_PATH)
+    cli.cmd_compare(args)
+    rows = json.loads((cli.ROOT / "data" / "compare_report.json").read_text())["results"]["ST-06"]
+    assert len(rows) == 4
+    assert [(r["slippage_pct"], r["earnings_policy"]) for r in rows] == [
+        (0.0, "exit"), (0.1, "exit"), (0.1, "entry_only"), (0.1, "cushion")]
+
+
+def test_detector_memo_returns_same_frame_for_same_bars():
+    from short_trade.backtest import _DETECTOR_MEMO, _bind_detectors
+    from synthetic import vcp_pattern
+    spec = next(s for s in load_all(CATALOG) if s.id == "ST-04")
+    bars, _ = vcp_pattern()
+    _DETECTOR_MEMO.clear()
+    ns1, ns2 = {}, {}
+    _bind_detectors(spec, ns1, bars)
+    _bind_detectors(spec, ns2, bars)
+    assert len(_DETECTOR_MEMO) == 1
+    # 足が変われば別のキーになる
+    other = bars.copy(); other.loc[other.index[-1], "close"] *= 1.01
+    _bind_detectors(spec, {}, other)
+    assert len(_DETECTOR_MEMO) == 2
